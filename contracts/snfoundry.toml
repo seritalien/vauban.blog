@@ -1,0 +1,10 @@
+# Starknet Foundry configuration
+# https://foundry-rs.github.io/starknet-foundry/appendix/snfoundry-toml.html
+
+[snforge]
+exit_first = true
+
+# Test output settings
+[snforge.output]
+# Show detailed output for each test
+detailed = true
