@@ -1,0 +1,57 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build outputs
+dist
+build
+.next
+.turbo
+out
+
+# Environment files
+.env
+.env.local
+.env.*.local
+!.env.example
+!.env.*.example
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea
+*.swp
+*.swo
+*.sublime-*
+
+# Testing
+coverage
+.nyc_output
+
+# Contracts (Cairo)
+contracts/target
+contracts/Scarb.lock
+contracts/.snfoundry
+
+# Docker
+docker/secrets/*.key
+docker/secrets/*.json
+
+# Arweave wallets
+arweave-wallet.json
+*.wallet.json
+
+# Temporary files
+*.tmp
+.cache
