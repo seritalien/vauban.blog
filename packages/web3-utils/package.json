@@ -1,0 +1,35 @@
+{
+  "name": "@vauban/web3-utils",
+  "version": "0.1.0",
+  "description": "Web3 utilities for IPFS, Arweave, and Starknet interactions",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "lint": "eslint src",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vauban/shared-types": "workspace:*",
+    "ipfs-http-client": "^60.0.1",
+    "arweave": "^1.14.4",
+    "starknet": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3"
+  },
+  "publishConfig": {
+    "access": "restricted"
+  }
+}
