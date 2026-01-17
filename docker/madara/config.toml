@@ -1,0 +1,52 @@
+# Madara L3 Appchain Configuration for Vauban Blog
+# Starknet Sequencer with Auto-Settlement to Sepolia L2
+
+[chain]
+name = "vauban-l3-dev"
+chain_id = "VAUBAN_DEV"
+# Sequencer address - will be the admin wallet address
+sequencer_address = "0x03a1f9b1d8e2c3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0"
+
+[rpc]
+listen_address = "0.0.0.0"
+listen_port = 9944
+cors_origins = ["*"]  # Dev only - restrict in production
+max_connections = 100
+
+[blocks]
+# Block production settings
+block_time_ms = 6000  # 6 seconds per block
+max_transactions_per_block = 100
+pending_block_update_time_ms = 2000  # Update pending block every 2s
+
+[settlement]
+# AUTO-SETTLEMENT TO SEPOLIA L2
+enabled = true
+starknet_rpc = "https://starknet-sepolia.infura.io/v3/YOUR_INFURA_KEY"
+settlement_interval_blocks = 100  # Settle every 100 L3 blocks (~10 minutes)
+settlement_account_address = "0x..."  # Admin wallet on Sepolia - UPDATE THIS
+settlement_account_private_key_path = "/secrets/sepolia_private_key.txt"
+settlement_contract_address = "0x..."  # Core contract on Sepolia for L3 state - UPDATE THIS
+max_retries = 3
+retry_delay_seconds = 30
+
+[database]
+path = "/data/madara.db"
+cache_size_mb = 512
+
+[telemetry]
+enabled = true
+endpoint = "https://telemetry.starknet.io"
+
+[logging]
+level = "info"  # Options: error, warn, info, debug, trace
+format = "json"  # Options: json, plain
+
+# Development settings
+[dev]
+# Enable instant finality (no confirmation blocks needed)
+instant_finality = true
+# Prefund accounts for testing
+prefunded_accounts = [
+    {address = "0x03a1f9b1d8e2c3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0", balance = "1000000000000000000000"},  # 1000 ETH/STRK
+]
