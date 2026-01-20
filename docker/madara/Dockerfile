@@ -1,7 +1,7 @@
 # Madara Starknet Sequencer Dockerfile
 # Builds Madara from source for L3 appchain
 
-FROM rust:1.75-slim as builder
+FROM rust:1.82-slim AS builder
 
 # Install dependencies
 RUN apt-get update && apt-get install -y \
@@ -12,19 +12,24 @@ RUN apt-get update && apt-get install -y \
     libclang-dev \
     clang \
     curl \
+    protobuf-compiler \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Scarb (Cairo package manager) - required for devnet contracts
+RUN curl --proto '=https' --tlsv1.2 -sSf https://docs.swmansion.com/scarb/install.sh | bash -s -- -v 2.8.2
+ENV PATH="/root/.local/bin:${PATH}"
 
 WORKDIR /build
 
-# Clone Madara repository (use specific stable tag)
-ARG MADARA_VERSION=v0.7.0
-RUN git clone https://github.com/keep-starknet-strange/madara.git \
+# Clone new Madara repository (madara-alliance)
+ARG MADARA_VERSION=main
+RUN git clone https://github.com/madara-alliance/madara.git \
     && cd madara \
     && git checkout ${MADARA_VERSION}
 
 # Build Madara
 WORKDIR /build/madara
-RUN cargo build --release
+RUN cargo build --bin madara --release
 
 # Runtime image
 FROM debian:bookworm-slim
@@ -42,16 +47,18 @@ COPY --from=builder /build/madara/target/release/madara /usr/local/bin/madara
 # Create data and secrets directories
 RUN mkdir -p /data /secrets /etc/madara
 
-# Copy config file
+# Copy config file and entrypoint script
 COPY config.toml /etc/madara/config.toml
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Expose RPC and WebSocket ports
 EXPOSE 9944 9945
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
     CMD curl -f http://localhost:9944/health || exit 1
 
-# Run Madara
-ENTRYPOINT ["madara"]
-CMD ["--config", "/etc/madara/config.toml"]
+# Run Madara via entrypoint
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["--name", "Vauban", "--devnet", "--base-path", "/data", "--rpc-port", "9944", "--rpc-external", "--rpc-cors", "all"]

@@ -16,14 +16,31 @@ mod BlogRegistry {
     pub struct PostMetadata {
         pub id: u64,
         pub author: ContractAddress,
-        pub arweave_tx_id: felt252,
-        pub ipfs_cid: felt252,
+        // Storage IDs split into two felt252s (31 chars each = 62 chars total)
+        pub arweave_tx_id_1: felt252,
+        pub arweave_tx_id_2: felt252,
+        pub ipfs_cid_1: felt252,
+        pub ipfs_cid_2: felt252,
         pub content_hash: felt252,
         pub price: u256,
         pub is_encrypted: bool,
         pub created_at: u64,
         pub updated_at: u64,
         pub is_deleted: bool,  // Soft delete flag
+        pub current_version: u64,  // Current version number (starts at 1)
+    }
+
+    // Version history entry - stores previous versions of a post
+    #[derive(Drop, Serde, starknet::Store)]
+    pub struct PostVersion {
+        pub version: u64,
+        pub arweave_tx_id_1: felt252,
+        pub arweave_tx_id_2: felt252,
+        pub ipfs_cid_1: felt252,
+        pub ipfs_cid_2: felt252,
+        pub content_hash: felt252,
+        pub created_at: u64,  // When this version was created
+        pub editor: ContractAddress,  // Who made this edit
     }
 
     #[storage]
@@ -36,6 +53,9 @@ mod BlogRegistry {
         posts: Map<u64, PostMetadata>,
         post_count: u64,
         post_purchases: Map<(u64, ContractAddress), bool>,
+
+        // Version History: (post_id, version_number) -> PostVersion
+        post_versions: Map<(u64, u64), PostVersion>,
 
         // Security
         paused: bool,
@@ -62,6 +82,7 @@ mod BlogRegistry {
     enum Event {
         PostPublished: PostPublished,
         PostUpdated: PostUpdated,
+        PostVersionCreated: PostVersionCreated,
         PostDeleted: PostDeleted,
         PostPurchased: PostPurchased,
         OwnershipTransferred: OwnershipTransferred,
@@ -81,8 +102,10 @@ mod BlogRegistry {
         post_id: u64,
         #[key]
         author: ContractAddress,
-        arweave_tx_id: felt252,
-        ipfs_cid: felt252,
+        arweave_tx_id_1: felt252,
+        arweave_tx_id_2: felt252,
+        ipfs_cid_1: felt252,
+        ipfs_cid_2: felt252,
         price: u256,
         created_at: u64,
     }
@@ -91,7 +114,23 @@ mod BlogRegistry {
     struct PostUpdated {
         #[key]
         post_id: u64,
+        version: u64,
         updated_at: u64,
+    }
+
+    #[derive(Drop, Serde, starknet::Event)]
+    struct PostVersionCreated {
+        #[key]
+        post_id: u64,
+        #[key]
+        version: u64,
+        editor: ContractAddress,
+        arweave_tx_id_1: felt252,
+        arweave_tx_id_2: felt252,
+        ipfs_cid_1: felt252,
+        ipfs_cid_2: felt252,
+        content_hash: felt252,
+        created_at: u64,
     }
 
     #[derive(Drop, Serde, starknet::Event)]
@@ -245,13 +284,14 @@ mod BlogRegistry {
 
         fn validate_post_inputs(
             self: @ContractState,
-            arweave_tx_id: felt252,
-            ipfs_cid: felt252,
+            arweave_tx_id_1: felt252,
+            ipfs_cid_1: felt252,
             content_hash: felt252,
             price: u256,
         ) {
-            assert(arweave_tx_id != 0, 'Invalid Arweave TX ID');
-            assert(ipfs_cid != 0, 'Invalid IPFS CID');
+            // Only check first part is non-zero (second part can be zero for short IDs)
+            assert(arweave_tx_id_1 != 0, 'Invalid Arweave TX ID');
+            assert(ipfs_cid_1 != 0, 'Invalid IPFS CID');
             assert(content_hash != 0, 'Invalid content hash');
             assert(price <= MAX_PRICE, 'Price exceeds maximum');
         }
@@ -287,8 +327,10 @@ mod BlogRegistry {
 
         fn publish_post(
             ref self: ContractState,
-            arweave_tx_id: felt252,
-            ipfs_cid: felt252,
+            arweave_tx_id_1: felt252,
+            arweave_tx_id_2: felt252,
+            ipfs_cid_1: felt252,
+            ipfs_cid_2: felt252,
             content_hash: felt252,
             price: u256,
             is_encrypted: bool,
@@ -304,26 +346,43 @@ mod BlogRegistry {
             self.check_publish_cooldown(caller);
 
             // Input validation
-            self.validate_post_inputs(arweave_tx_id, ipfs_cid, content_hash, price);
+            self.validate_post_inputs(arweave_tx_id_1, ipfs_cid_1, content_hash, price);
 
             // Checks-Effects-Interactions pattern: Effects
             let post_id = self.post_count.read() + 1;
             let now = get_block_timestamp();
+            let initial_version: u64 = 1;
 
             let post = PostMetadata {
                 id: post_id,
                 author: caller,
-                arweave_tx_id,
-                ipfs_cid,
+                arweave_tx_id_1,
+                arweave_tx_id_2,
+                ipfs_cid_1,
+                ipfs_cid_2,
                 content_hash,
                 price,
                 is_encrypted,
                 created_at: now,
                 updated_at: now,
                 is_deleted: false,
+                current_version: initial_version,
+            };
+
+            // Store initial version in history
+            let version_entry = PostVersion {
+                version: initial_version,
+                arweave_tx_id_1,
+                arweave_tx_id_2,
+                ipfs_cid_1,
+                ipfs_cid_2,
+                content_hash,
+                created_at: now,
+                editor: caller,
             };
 
             self.posts.entry(post_id).write(post);
+            self.post_versions.entry((post_id, initial_version)).write(version_entry);
             self.post_count.write(post_id);
             self.last_publish_time.entry(caller).write(now);
 
@@ -331,9 +390,23 @@ mod BlogRegistry {
             self.emit(PostPublished {
                 post_id,
                 author: caller,
-                arweave_tx_id,
-                ipfs_cid,
+                arweave_tx_id_1,
+                arweave_tx_id_2,
+                ipfs_cid_1,
+                ipfs_cid_2,
                 price,
+                created_at: now,
+            });
+
+            self.emit(PostVersionCreated {
+                post_id,
+                version: initial_version,
+                editor: caller,
+                arweave_tx_id_1,
+                arweave_tx_id_2,
+                ipfs_cid_1,
+                ipfs_cid_2,
+                content_hash,
                 created_at: now,
             });
 
@@ -344,34 +417,71 @@ mod BlogRegistry {
         fn update_post(
             ref self: ContractState,
             post_id: u64,
-            arweave_tx_id: felt252,
-            ipfs_cid: felt252,
+            arweave_tx_id_1: felt252,
+            arweave_tx_id_2: felt252,
+            ipfs_cid_1: felt252,
+            ipfs_cid_2: felt252,
             content_hash: felt252,
         ) -> bool {
             self.assert_only_admin();
             self.assert_not_paused();
             self.assert_no_reentrancy();
 
+            let caller = get_caller_address();
+
             // Validation
             assert(post_id > 0 && post_id <= self.post_count.read(), 'Invalid post ID');
-            self.validate_post_inputs(arweave_tx_id, ipfs_cid, content_hash, 0);
+            self.validate_post_inputs(arweave_tx_id_1, ipfs_cid_1, content_hash, 0);
 
             let mut post = self.posts.entry(post_id).read();
             assert(post.id != 0, 'Post does not exist');
             assert(!post.is_deleted, 'Post is deleted');
 
-            // Update fields
+            // Increment version
             let current_time = get_block_timestamp();
-            post.arweave_tx_id = arweave_tx_id;
-            post.ipfs_cid = ipfs_cid;
+            let new_version = post.current_version + 1;
+
+            // Store new version in history
+            let version_entry = PostVersion {
+                version: new_version,
+                arweave_tx_id_1,
+                arweave_tx_id_2,
+                ipfs_cid_1,
+                ipfs_cid_2,
+                content_hash,
+                created_at: current_time,
+                editor: caller,
+            };
+            self.post_versions.entry((post_id, new_version)).write(version_entry);
+
+            // Update post to point to new content
+            post.arweave_tx_id_1 = arweave_tx_id_1;
+            post.arweave_tx_id_2 = arweave_tx_id_2;
+            post.ipfs_cid_1 = ipfs_cid_1;
+            post.ipfs_cid_2 = ipfs_cid_2;
             post.content_hash = content_hash;
             post.updated_at = current_time;
+            post.current_version = new_version;
 
             self.posts.entry(post_id).write(post);
 
+            // Emit events
             self.emit(PostUpdated {
                 post_id,
+                version: new_version,
                 updated_at: current_time,
+            });
+
+            self.emit(PostVersionCreated {
+                post_id,
+                version: new_version,
+                editor: caller,
+                arweave_tx_id_1,
+                arweave_tx_id_2,
+                ipfs_cid_1,
+                ipfs_cid_2,
+                content_hash,
+                created_at: current_time,
             });
 
             self.clear_reentrancy();
@@ -521,6 +631,77 @@ mod BlogRegistry {
 
             // Check if purchased
             self.post_purchases.entry((post_id, user)).read()
+        }
+
+        // ========================================================================
+        // VERSION HISTORY
+        // ========================================================================
+
+        fn get_post_version(
+            self: @ContractState,
+            post_id: u64,
+            version: u64
+        ) -> PostVersion {
+            assert(post_id > 0 && post_id <= self.post_count.read(), 'Invalid post ID');
+            let post = self.posts.entry(post_id).read();
+            assert(post.id != 0, 'Post does not exist');
+            assert(version > 0 && version <= post.current_version, 'Invalid version');
+
+            self.post_versions.entry((post_id, version)).read()
+        }
+
+        fn get_post_version_count(self: @ContractState, post_id: u64) -> u64 {
+            assert(post_id > 0 && post_id <= self.post_count.read(), 'Invalid post ID');
+            let post = self.posts.entry(post_id).read();
+            assert(post.id != 0, 'Post does not exist');
+            post.current_version
+        }
+
+        fn get_post_versions(
+            self: @ContractState,
+            post_id: u64,
+            limit: u64,
+            offset: u64
+        ) -> Array<PostVersion> {
+            assert(post_id > 0 && post_id <= self.post_count.read(), 'Invalid post ID');
+            assert(limit > 0 && limit <= MAX_POSTS_PER_QUERY, 'Invalid limit');
+
+            let post = self.posts.entry(post_id).read();
+            assert(post.id != 0, 'Post does not exist');
+
+            let mut result: Array<PostVersion> = ArrayTrait::new();
+            let total_versions = post.current_version;
+
+            if offset >= total_versions {
+                return result;
+            }
+
+            // Return versions from newest to oldest
+            let start_version = if total_versions > offset {
+                total_versions - offset
+            } else {
+                0
+            };
+
+            let end_version = if start_version > limit {
+                start_version - limit + 1
+            } else {
+                1
+            };
+
+            let mut v = start_version;
+            while v >= end_version {
+                let version_data = self.post_versions.entry((post_id, v)).read();
+                if version_data.version != 0 {
+                    result.append(version_data);
+                }
+                if v == 0 {
+                    break;
+                }
+                v -= 1;
+            };
+
+            result
         }
 
         // ========================================================================
@@ -685,8 +866,10 @@ trait IBlogRegistry<TContractState> {
     // Admin functions
     fn publish_post(
         ref self: TContractState,
-        arweave_tx_id: felt252,
-        ipfs_cid: felt252,
+        arweave_tx_id_1: felt252,
+        arweave_tx_id_2: felt252,
+        ipfs_cid_1: felt252,
+        ipfs_cid_2: felt252,
         content_hash: felt252,
         price: u256,
         is_encrypted: bool,
@@ -694,8 +877,10 @@ trait IBlogRegistry<TContractState> {
     fn update_post(
         ref self: TContractState,
         post_id: u64,
-        arweave_tx_id: felt252,
-        ipfs_cid: felt252,
+        arweave_tx_id_1: felt252,
+        arweave_tx_id_2: felt252,
+        ipfs_cid_1: felt252,
+        ipfs_cid_2: felt252,
         content_hash: felt252,
     ) -> bool;
     fn delete_post(ref self: TContractState, post_id: u64) -> bool;
@@ -708,6 +893,11 @@ trait IBlogRegistry<TContractState> {
     fn get_post_count(self: @TContractState) -> u64;
     fn get_posts(self: @TContractState, limit: u64, offset: u64) -> Array<BlogRegistry::PostMetadata>;
     fn has_access(self: @TContractState, post_id: u64, user: ContractAddress) -> bool;
+
+    // Version history
+    fn get_post_version(self: @TContractState, post_id: u64, version: u64) -> BlogRegistry::PostVersion;
+    fn get_post_version_count(self: @TContractState, post_id: u64) -> u64;
+    fn get_post_versions(self: @TContractState, post_id: u64, limit: u64, offset: u64) -> Array<BlogRegistry::PostVersion>;
 
     // Admin management
     fn add_admin(ref self: TContractState, admin: ContractAddress);

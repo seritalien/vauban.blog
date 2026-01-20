@@ -30,4 +30,9 @@ cp contracts/target/dev/vauban_blog_SessionKeyManager.contract_class.json \
    packages/web3-utils/src/abis/session_key_manager.json
 ```
 
-Or use the automated script (TODO: create this script).
+Or use the automated script:
+
+```bash
+# From project root
+./scripts/copy-abis.sh
+```

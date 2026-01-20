@@ -41,7 +41,7 @@ export type CommentMetadata = z.infer<typeof CommentMetadataSchema>;
 /**
  * Schema for complete comment (metadata + content)
  */
-export const CommentOutputSchema = z.object({
+export const CommentOutputSchema: z.ZodType<CommentOutput> = z.object({
   id: z.string(),
   postId: z.string(),
   author: z.string(),
@@ -59,7 +59,19 @@ export const CommentOutputSchema = z.object({
   isLikedByCurrentUser: z.boolean().optional(),
 });
 
-export type CommentOutput = z.infer<typeof CommentOutputSchema>;
+export type CommentOutput = {
+  id: string;
+  postId: string;
+  author: string;
+  content: string;
+  contentHash: string;
+  parentCommentId?: string;
+  createdAt: Date;
+  isDeleted: boolean;
+  likeCount: number;
+  replies?: CommentOutput[];
+  isLikedByCurrentUser?: boolean;
+};
 
 /**
  * Schema for comment query filters

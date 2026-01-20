@@ -37,7 +37,7 @@ fi
 # Start services
 cd "$DOCKER_DIR"
 echo "🐳 Starting Docker services..."
-docker-compose up -d $COMPOSE_PROFILES
+docker compose up -d $COMPOSE_PROFILES
 
 # Wait for services to be healthy
 echo "⏳ Waiting for services to be ready..."

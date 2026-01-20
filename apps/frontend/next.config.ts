@@ -6,7 +6,8 @@ const nextConfig: NextConfig = {
   // Experimental features
   experimental: {
     // Enable React 19 features
-    reactCompiler: true,
+    // Disabled: requires babel-plugin-react-compiler
+    // reactCompiler: true,
   },
 
   // TypeScript strict mode
@@ -42,14 +43,30 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_IPFS_API_URL: process.env.NEXT_PUBLIC_IPFS_API_URL,
   },
 
-  // Webpack configuration for Web3 libraries
-  webpack: (config) => {
+  // Webpack configuration for Web3 libraries and IPFS
+  webpack: (config, { isServer }) => {
     config.resolve.fallback = {
       ...config.resolve.fallback,
       fs: false,
       net: false,
       tls: false,
+      crypto: false,
+      stream: false,
+      http: false,
+      https: false,
+      zlib: false,
+      path: false,
+      os: false,
     };
+
+    // Externalize IPFS native modules on server side
+    if (isServer) {
+      config.externals = config.externals || [];
+      config.externals.push({
+        'ipfs-http-client': 'commonjs ipfs-http-client',
+      });
+    }
+
     return config;
   },
 };

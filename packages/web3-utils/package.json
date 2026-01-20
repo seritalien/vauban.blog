@@ -19,9 +19,10 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@irys/sdk": "^0.2.11",
     "@vauban/shared-types": "workspace:*",
-    "ipfs-http-client": "^60.0.1",
     "arweave": "^1.14.4",
+    "ipfs-http-client": "^60.0.1",
     "starknet": "^6.0.0"
   },
   "devDependencies": {

@@ -1,10 +1,13 @@
-import Arweave from 'arweave';
+import ArweaveModule from 'arweave';
+
+// Handle both default and named exports (CommonJS vs ESM)
+const Arweave = (ArweaveModule as any).default || ArweaveModule;
 
 // ============================================================================
 // ARWEAVE CLIENT CONFIGURATION
 // ============================================================================
 
-let arweaveClient: Arweave | null = null;
+let arweaveClient: InstanceType<typeof Arweave> | null = null;
 
 export interface ArweaveConfig {
   host?: string;
@@ -17,7 +20,7 @@ export interface ArweaveConfig {
 /**
  * Initialize Arweave client
  */
-export function initArweave(config: ArweaveConfig = {}): Arweave {
+export function initArweave(config: ArweaveConfig = {}): InstanceType<typeof Arweave> {
   const {
     host = 'arweave.net',
     port = 443,
@@ -40,7 +43,7 @@ export function initArweave(config: ArweaveConfig = {}): Arweave {
 /**
  * Get Arweave client (initialize if not already done)
  */
-export function getArweaveClient(): Arweave {
+export function getArweaveClient(): InstanceType<typeof Arweave> {
   if (!arweaveClient) {
     return initArweave();
   }

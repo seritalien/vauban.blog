@@ -1,10 +1,22 @@
-import { create, IPFSHTTPClient } from 'ipfs-http-client';
+// Dynamic import to avoid SSR issues with Next.js
+let create: any;
+
+// Check if we're in browser environment
+// @ts-ignore - window check for browser environment
+const isBrowser = typeof window !== 'undefined';
+
+if (isBrowser) {
+  // Only import IPFS in browser
+  import('ipfs-http-client').then((module) => {
+    create = module.create;
+  });
+}
 
 // ============================================================================
 // IPFS CLIENT CONFIGURATION
 // ============================================================================
 
-let ipfsClient: IPFSHTTPClient | null = null;
+let ipfsClient: any = null;
 
 export interface IPFSConfig {
   url?: string;
@@ -17,7 +29,16 @@ export interface IPFSConfig {
 /**
  * Initialize IPFS client
  */
-export function initIPFS(config: IPFSConfig = {}): IPFSHTTPClient {
+export async function initIPFS(config: IPFSConfig = {}): Promise<any> {
+  // Ensure IPFS is loaded
+  if (!create) {
+    if (isBrowser) {
+      const module = await import('ipfs-http-client');
+      create = module.create;
+    } else {
+      throw new Error('IPFS can only be used in browser environment');
+    }
+  }
   const {
     url = process.env.NEXT_PUBLIC_IPFS_API_URL || 'http://localhost:5001',
     host,
@@ -43,9 +64,9 @@ export function initIPFS(config: IPFSConfig = {}): IPFSHTTPClient {
 /**
  * Get IPFS client (initialize if not already done)
  */
-export function getIPFSClient(): IPFSHTTPClient {
+export async function getIPFSClient(): Promise<any> {
   if (!ipfsClient) {
-    return initIPFS();
+    return await initIPFS();
   }
   return ipfsClient;
 }
@@ -58,7 +79,7 @@ export function getIPFSClient(): IPFSHTTPClient {
  * Upload JSON data to IPFS
  */
 export async function uploadJSONToIPFS(data: any): Promise<string> {
-  const client = getIPFSClient();
+  const client = await getIPFSClient();
 
   try {
     const json = JSON.stringify(data);
@@ -79,7 +100,7 @@ export async function uploadJSONToIPFS(data: any): Promise<string> {
  * Upload file to IPFS
  */
 export async function uploadFileToIPFS(file: File | Blob): Promise<string> {
-  const client = getIPFSClient();
+  const client = await getIPFSClient();
 
   try {
     const { cid } = await client.add(file);
@@ -97,7 +118,7 @@ export async function uploadFileToIPFS(file: File | Blob): Promise<string> {
  * Upload buffer to IPFS
  */
 export async function uploadBufferToIPFS(buffer: Buffer | Uint8Array): Promise<string> {
-  const client = getIPFSClient();
+  const client = await getIPFSClient();
 
   try {
     const { cid } = await client.add(buffer);
@@ -199,7 +220,7 @@ export async function fetchBlobFromIPFS(cid: string): Promise<Blob> {
  * Pin content to IPFS (keep it cached)
  */
 export async function pinToIPFS(cid: string): Promise<void> {
-  const client = getIPFSClient();
+  const client = await getIPFSClient();
 
   try {
     await client.pin.add(cid);
@@ -214,7 +235,7 @@ export async function pinToIPFS(cid: string): Promise<void> {
  * Unpin content from IPFS
  */
 export async function unpinFromIPFS(cid: string): Promise<void> {
-  const client = getIPFSClient();
+  const client = await getIPFSClient();
 
   try {
     await client.pin.rm(cid);
@@ -229,7 +250,7 @@ export async function unpinFromIPFS(cid: string): Promise<void> {
  * List all pinned content
  */
 export async function listPinnedContent(): Promise<string[]> {
-  const client = getIPFSClient();
+  const client = await getIPFSClient();
 
   try {
     const pins: string[] = [];
@@ -260,7 +281,7 @@ export function getIPFSGatewayUrl(cid: string): string {
  */
 export async function checkIPFSConnection(): Promise<boolean> {
   try {
-    const client = getIPFSClient();
+    const client = await getIPFSClient();
     await client.id();
     return true;
   } catch (error) {
@@ -273,7 +294,7 @@ export async function checkIPFSConnection(): Promise<boolean> {
  * Get IPFS node info
  */
 export async function getIPFSNodeInfo(): Promise<any> {
-  const client = getIPFSClient();
+  const client = await getIPFSClient();
   try {
     return await client.id();
   } catch (error) {

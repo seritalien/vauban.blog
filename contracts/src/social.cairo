@@ -8,6 +8,9 @@ mod Social {
     use starknet::storage::{Map, StoragePathEntry, StoragePointerReadAccess, StoragePointerWriteAccess};
     use core::num::traits::Zero;
 
+    // Import SessionKeyManager interface for validation
+    use super::{ISessionKeyManagerDispatcher, ISessionKeyManagerDispatcherTrait};
+
     // ============================================================================
     // STORAGE STRUCTURES
     // ============================================================================
@@ -51,6 +54,10 @@ mod Social {
         // Moderation
         banned_users: Map<ContractAddress, bool>,
         reported_comments: Map<u64, u64>,  // comment_id -> report count
+
+        // Session Key Integration
+        session_key_manager: ContractAddress,
+        session_key_nonces: Map<felt252, u64>,  // session_key -> nonce (replay protection)
     }
 
     // ============================================================================
@@ -73,6 +80,13 @@ mod Social {
         ModeratorRemoved: ModeratorRemoved,
         Paused: Paused,
         Unpaused: Unpaused,
+        SessionKeyManagerUpdated: SessionKeyManagerUpdated,
+    }
+
+    #[derive(Drop, Serde, starknet::Event)]
+    struct SessionKeyManagerUpdated {
+        old_manager: ContractAddress,
+        new_manager: ContractAddress,
     }
 
     #[derive(Drop, Serde, starknet::Event)]
@@ -357,6 +371,111 @@ mod Social {
             comment_id
         }
 
+        // Session key variant - allows authorized session keys to post on behalf of users
+        fn add_comment_with_session_key(
+            ref self: ContractState,
+            post_id: u64,
+            content_hash: felt252,
+            parent_comment_id: u64,
+            session_public_key: felt252,
+            on_behalf_of: ContractAddress,
+            nonce: u64,
+        ) -> u64 {
+            // Security checks
+            self.assert_not_paused();
+            self.assert_no_reentrancy();
+
+            // Verify session key manager is configured
+            let session_manager = self.session_key_manager.read();
+            assert(session_manager.is_non_zero(), 'Session manager not set');
+
+            // Verify nonce (replay protection)
+            let current_nonce = self.session_key_nonces.entry(session_public_key).read();
+            assert(nonce == current_nonce, 'Invalid nonce');
+
+            // Import and call SessionKeyManager to validate
+            let session_manager_dispatcher = ISessionKeyManagerDispatcher { contract_address: session_manager };
+
+            // Get the function selector for add_comment
+            let add_comment_selector: felt252 = selector!("add_comment");
+
+            // Validate session key with SessionKeyManager
+            let is_valid = session_manager_dispatcher.validate_and_use_session_key(
+                session_public_key,
+                starknet::get_contract_address(),  // This contract
+                add_comment_selector,
+            );
+            assert(is_valid, 'Invalid session key');
+
+            // Verify the session key belongs to on_behalf_of
+            let session_info = session_manager_dispatcher.get_session_key(session_public_key);
+            assert(session_info.master_account == on_behalf_of, 'Session key owner mismatch');
+
+            // Check user not banned
+            self.assert_not_banned(on_behalf_of);
+
+            // Rate limiting for the actual user
+            self.check_comment_cooldown(on_behalf_of);
+            self.check_daily_limit(on_behalf_of);
+
+            // Input validation
+            self.validate_comment_inputs(post_id, content_hash);
+
+            // Validate parent comment if replying
+            if parent_comment_id > 0 {
+                assert(parent_comment_id <= self.comment_count.read(), 'Invalid parent comment');
+                let parent = self.comments.entry(parent_comment_id).read();
+                assert(parent.id != 0, 'Parent comment not found');
+                assert(!parent.is_deleted, 'Parent comment deleted');
+                assert(parent.post_id == post_id, 'Parent comment mismatch');
+            }
+
+            // Create comment (attributed to on_behalf_of)
+            let comment_id = self.comment_count.read() + 1;
+            let now = get_block_timestamp();
+
+            let comment = Comment {
+                id: comment_id,
+                post_id,
+                author: on_behalf_of,  // Comment belongs to the actual user
+                content_hash,
+                parent_comment_id,
+                created_at: now,
+                is_deleted: false,
+                like_count: 0,
+            };
+
+            self.comments.entry(comment_id).write(comment);
+            self.comment_count.write(comment_id);
+
+            // Update post comment count
+            let current_count = self.post_comment_count.entry(post_id).read();
+            self.post_comment_count.entry(post_id).write(current_count + 1);
+
+            // Update rate limiting for the actual user
+            self.last_comment_time.entry(on_behalf_of).write(now);
+
+            // Increment nonce for replay protection
+            self.session_key_nonces.entry(session_public_key).write(nonce + 1);
+
+            // Emit event
+            self.emit(CommentAdded {
+                comment_id,
+                post_id,
+                author: on_behalf_of,
+                parent_comment_id,
+                content_hash,
+                created_at: now,
+            });
+
+            self.clear_reentrancy();
+            comment_id
+        }
+
+        fn get_session_key_nonce(self: @ContractState, session_public_key: felt252) -> u64 {
+            self.session_key_nonces.entry(session_public_key).read()
+        }
+
         fn like_post(ref self: ContractState, post_id: u64) -> bool {
             self.assert_not_paused();
             self.assert_no_reentrancy();
@@ -464,7 +583,7 @@ mod Social {
             let caller = get_caller_address();
             assert(comment_id > 0 && comment_id <= self.comment_count.read(), 'Invalid comment ID');
 
-            let mut comment = self.comments.entry(comment_id).read();
+            let comment = self.comments.entry(comment_id).read();
             assert(comment.id != 0, 'Comment not found');
             assert(!comment.is_deleted, 'Comment already deleted');
 
@@ -480,8 +599,9 @@ mod Social {
 
             // Auto-delete if threshold reached
             if report_count >= AUTO_BAN_REPORT_THRESHOLD {
-                comment.is_deleted = true;
-                self.comments.entry(comment_id).write(comment);
+                let mut comment_to_delete = self.comments.entry(comment_id).read();
+                comment_to_delete.is_deleted = true;
+                self.comments.entry(comment_id).write(comment_to_delete);
             }
 
             true
@@ -673,6 +793,22 @@ mod Social {
         fn get_owner(self: @ContractState) -> ContractAddress {
             self.owner.read()
         }
+
+        fn set_session_key_manager(ref self: ContractState, manager: ContractAddress) {
+            self.assert_only_owner();
+
+            let old_manager = self.session_key_manager.read();
+            self.session_key_manager.write(manager);
+
+            self.emit(SessionKeyManagerUpdated {
+                old_manager,
+                new_manager: manager,
+            });
+        }
+
+        fn get_session_key_manager(self: @ContractState) -> ContractAddress {
+            self.session_key_manager.read()
+        }
     }
 }
 
@@ -691,6 +827,16 @@ trait ISocial<TContractState> {
         content_hash: felt252,
         parent_comment_id: u64,
     ) -> u64;
+    fn add_comment_with_session_key(
+        ref self: TContractState,
+        post_id: u64,
+        content_hash: felt252,
+        parent_comment_id: u64,
+        session_public_key: felt252,
+        on_behalf_of: ContractAddress,
+        nonce: u64,
+    ) -> u64;
+    fn get_session_key_nonce(self: @TContractState, session_public_key: felt252) -> u64;
     fn like_post(ref self: TContractState, post_id: u64) -> bool;
     fn unlike_post(ref self: TContractState, post_id: u64) -> bool;
     fn like_comment(ref self: TContractState, comment_id: u64) -> bool;
@@ -727,4 +873,35 @@ trait ISocial<TContractState> {
     fn set_comment_cooldown(ref self: TContractState, cooldown_seconds: u64);
     fn get_comment_cooldown(self: @TContractState) -> u64;
     fn get_owner(self: @TContractState) -> ContractAddress;
+
+    // Session key management
+    fn set_session_key_manager(ref self: TContractState, manager: ContractAddress);
+    fn get_session_key_manager(self: @TContractState) -> ContractAddress;
+}
+
+// ============================================================================
+// SESSION KEY MANAGER INTERFACE (for cross-contract calls)
+// ============================================================================
+
+#[derive(Drop, Serde, starknet::Store, Clone)]
+pub struct SessionKey {
+    pub session_public_key: felt252,
+    pub master_account: ContractAddress,
+    pub created_at: u64,
+    pub expires_at: u64,
+    pub is_revoked: bool,
+    pub use_count: u64,
+    pub max_uses: u64,
+}
+
+#[starknet::interface]
+trait ISessionKeyManager<TContractState> {
+    fn validate_and_use_session_key(
+        ref self: TContractState,
+        session_public_key: felt252,
+        target_contract: ContractAddress,
+        function_selector: felt252,
+    ) -> bool;
+    fn get_session_key(self: @TContractState, session_public_key: felt252) -> SessionKey;
+    fn is_session_key_valid(self: @TContractState, session_public_key: felt252) -> bool;
 }

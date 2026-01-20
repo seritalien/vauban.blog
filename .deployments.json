@@ -1,0 +1,11 @@
+{
+  "network": "http://localhost:9944",
+  "deployed_at": "2026-01-20T20:35:26.032Z",
+  "deployer": "0x3bb306a004034dba19e6cf7b161e7a4fef64bc1078419e8ad1876192f0b8cd1",
+  "contracts": {
+    "BlogRegistry": "0x38fd795cdf87f7531a752096e381e86fdb4e4b94ac187febb001b5256bc2cb3",
+    "Social": "0x54d06978da188b0ee5e1ec6eb4fad3b2a9a41bfd0b3772a32a449a98dbe39ff",
+    "Paymaster": "0x1f086993216d757c7a12d7956abd24a44e271ea802227a7a46e5dd212a33df8",
+    "SessionKeyManager": "0x3887985461113c097ed9f96e7688eff2dc9a30d744f03e057538eae6366ea81"
+  }
+}

@@ -41,3 +41,13 @@ export {
   type ValidateSessionKey,
   type SessionKeyStatus,
 } from './session-key';
+
+// Profile schemas and types
+export {
+  AuthorProfileSchema,
+  ProfileInputSchema,
+  AuthorInfoSchema,
+  type AuthorProfile,
+  type ProfileInput,
+  type AuthorInfo,
+} from './profile';
