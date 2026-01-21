@@ -238,27 +238,59 @@ function AdminPageInner() {
 
     if (!account) return;
 
-    // Check if scheduled for future date
+    // Check if scheduled for future date - use server-side scheduling
     if (scheduledAt) {
       const scheduledTime = new Date(scheduledAt).getTime();
       const now = Date.now();
 
       if (scheduledTime > now) {
-        // Save as scheduled draft instead of publishing
-        const saved = saveDraft({
-          ...formData,
-          tags: formData.tags.join(', '),
-          id: draftId || undefined,
-          scheduledAt,
-        });
-        setDraftId(saved.id);
-        window.history.replaceState(null, '', `/admin?draft=${saved.id}`);
+        try {
+          setIsPublishing(true);
+          setPublishStatus('Scheduling post for automatic publishing...');
 
-        setPublishStatus(
-          `Draft scheduled for ${format(new Date(scheduledAt), 'MMMM d, yyyy')} at ${format(new Date(scheduledAt), 'HH:mm')}. ` +
-          `Note: You must return to this page to publish at the scheduled time. Automatic publishing is not yet supported.`
-        );
-        return;
+          // Schedule via server-side API
+          const response = await fetch('/api/scheduled', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              scheduledAt: new Date(scheduledAt).toISOString(),
+              authorAddress: account.address,
+              postData: {
+                ...formData,
+                tags: formData.tags,
+              },
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Failed to schedule post');
+          }
+
+          await response.json(); // Consume response
+
+          // Delete local draft since it's now scheduled server-side
+          if (draftId) {
+            deleteDraft(draftId);
+          }
+
+          setPublishStatus(
+            `Post scheduled for ${format(new Date(scheduledAt), 'MMMM d, yyyy')} at ${format(new Date(scheduledAt), 'HH:mm')}. ` +
+            `It will be automatically published at that time.`
+          );
+
+          // Clear form and redirect after delay
+          setTimeout(() => {
+            router.push('/dashboard');
+          }, 3000);
+
+          return;
+        } catch (error) {
+          setPublishStatus(`Error: ${error instanceof Error ? error.message : 'Failed to schedule'}`);
+          return;
+        } finally {
+          setIsPublishing(false);
+        }
       }
     }
 
@@ -621,11 +653,14 @@ function AdminPageInner() {
             </div>
             {scheduledAt && new Date(scheduledAt) > new Date() && (
               <div className="mt-2 space-y-1">
-                <p className="text-sm text-amber-600 dark:text-amber-400">
+                <p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
                   Scheduled for {format(new Date(scheduledAt), 'MMMM d, yyyy')} at {format(new Date(scheduledAt), 'HH:mm')}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Note: Draft will be saved. You must return to publish at the scheduled time.
+                  Post will be automatically published at the scheduled time.
                 </p>
               </div>
             )}
@@ -679,12 +714,14 @@ function AdminPageInner() {
               disabled={isPublishing || conflict?.hasConflict}
               className={`flex-1 py-3 font-semibold rounded disabled:opacity-50 transition-colors ${
                 scheduledAt && new Date(scheduledAt) > new Date()
-                  ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                  ? 'bg-green-600 hover:bg-green-700 text-white'
                   : 'bg-blue-600 hover:bg-blue-700 text-white'
               }`}
             >
               {isPublishing
-                ? 'Publishing...'
+                ? scheduledAt && new Date(scheduledAt) > new Date()
+                  ? 'Scheduling...'
+                  : 'Publishing...'
                 : scheduledAt && new Date(scheduledAt) > new Date()
                   ? `Schedule for ${format(new Date(scheduledAt), 'MMM d, HH:mm')}`
                   : 'Publish Now'

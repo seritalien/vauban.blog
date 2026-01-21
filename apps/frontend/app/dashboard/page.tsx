@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { usePosts } from '@/hooks/use-posts';
 import { useWallet } from '@/providers/wallet-provider';
 import { useRole } from '@/hooks/use-role';
@@ -10,8 +10,25 @@ import {
   getUserBadges,
 } from '@vauban/shared-types';
 import Link from 'next/link';
-import { format, subDays, isAfter } from 'date-fns';
+import { format, subDays, isAfter, formatDistanceToNow } from 'date-fns';
 import { normalizeAddress } from '@/lib/profiles';
+
+// Scheduled post type
+interface ScheduledPost {
+  id: string;
+  scheduledAt: string;
+  createdAt: string;
+  authorAddress: string;
+  postData: {
+    title: string;
+    slug: string;
+    excerpt: string;
+    tags: string[];
+  };
+  status: 'pending' | 'published' | 'failed';
+  error?: string;
+  publishedAt?: string;
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +55,42 @@ export default function AuthorDashboardPage() {
   const { address, isConnected } = useWallet();
   const { posts, isLoading } = usePosts(100, 0);
   const { roleLabel, userRole } = useRole();
+
+  // Scheduled posts state
+  const [scheduledPosts, setScheduledPosts] = useState<ScheduledPost[]>([]);
+
+  // Fetch scheduled posts
+  const fetchScheduledPosts = useCallback(async () => {
+    if (!address) return;
+    try {
+      const response = await fetch(`/api/scheduled?author=${address}&status=pending`);
+      if (response.ok) {
+        const data = await response.json();
+        setScheduledPosts(data.posts || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch scheduled posts:', error);
+    }
+  }, [address]);
+
+  useEffect(() => {
+    fetchScheduledPosts();
+  }, [fetchScheduledPosts]);
+
+  // Cancel scheduled post
+  const handleCancelScheduled = async (postId: string) => {
+    if (!confirm('Are you sure you want to cancel this scheduled post?')) return;
+    try {
+      const response = await fetch(`/api/scheduled?id=${postId}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        setScheduledPosts(prev => prev.filter(p => p.id !== postId));
+      }
+    } catch (error) {
+      console.error('Failed to cancel scheduled post:', error);
+    }
+  };
 
   // Filter to user's posts
   const myPosts = useMemo(() => {
@@ -261,6 +314,60 @@ export default function AuthorDashboardPage() {
             <StatCard title="Verified" value={postStats.verifiedPosts} />
           </div>
         </div>
+
+        {/* Scheduled Posts */}
+        {scheduledPosts.length > 0 && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold flex items-center gap-2">
+                <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Scheduled Posts
+              </h2>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                {scheduledPosts.length} {scheduledPosts.length === 1 ? 'post' : 'posts'} queued
+              </span>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+              <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                {scheduledPosts.map((post) => (
+                  <div key={post.id} className="p-4 flex items-center justify-between">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-medium text-gray-900 dark:text-white truncate">
+                        {post.postData.title}
+                      </h3>
+                      <div className="flex items-center gap-3 mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        <span className="flex items-center gap-1">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          {format(new Date(post.scheduledAt), 'MMM d, yyyy')}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          {format(new Date(post.scheduledAt), 'HH:mm')}
+                        </span>
+                        <span className="text-green-600 dark:text-green-400">
+                          {formatDistanceToNow(new Date(post.scheduledAt), { addSuffix: true })}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleCancelScheduled(post.id)}
+                      className="ml-4 px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Recent Posts */}
         <div className="mb-8">
