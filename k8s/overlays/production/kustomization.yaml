@@ -1,0 +1,48 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: vauban
+
+resources:
+  - ../../base
+
+# Production-specific patches
+patches:
+  # Increase frontend replicas
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+    target:
+      kind: Deployment
+      name: frontend
+
+# Production images with specific tags
+images:
+  - name: ghcr.io/vauban/frontend
+    newTag: "1.0.0"
+  - name: ghcr.io/vauban/madara
+    newTag: "0.7.0"
+
+# Production ConfigMap patches
+configMapGenerator:
+  - name: frontend-config
+    behavior: merge
+    literals:
+      - NEXT_PUBLIC_BASE_URL=https://vauban.blog
+      # Add your production contract addresses here
+      - NEXT_PUBLIC_BLOG_REGISTRY_ADDRESS=0x...
+      - NEXT_PUBLIC_SOCIAL_ADDRESS=0x...
+      - NEXT_PUBLIC_PAYMASTER_ADDRESS=0x...
+      - NEXT_PUBLIC_SESSION_KEY_MANAGER_ADDRESS=0x...
+
+# Production secrets (use sealed-secrets or external-secrets in real deployment)
+secretGenerator:
+  - name: frontend-secrets
+    behavior: merge
+    literals:
+      - M2M_API_KEY=PRODUCTION_KEY_HERE
+      - CRON_SECRET=PRODUCTION_CRON_SECRET
+
+commonLabels:
+  environment: production

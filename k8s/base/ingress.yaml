@@ -1,0 +1,47 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vauban-ingress
+  namespace: vauban
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.middlewares: vauban-redirect-https@kubernetescrd
+spec:
+  tls:
+    - hosts:
+        - vauban.blog
+        - www.vauban.blog
+      secretName: vauban-tls
+  rules:
+    - host: vauban.blog
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80
+    - host: www.vauban.blog
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80
+---
+# HTTPS redirect middleware for Traefik
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: redirect-https
+  namespace: vauban
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true

@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: vauban
+data:
+  NEXT_PUBLIC_MADARA_RPC: "http://madara:9944"
+  NEXT_PUBLIC_IPFS_GATEWAY_URL: "http://ipfs:8080"
+  NEXT_PUBLIC_IPFS_API_URL: "http://ipfs:5001"
+  IPFS_API_URL: "http://ipfs:5001"
+  # Contract addresses (will be overwritten by overlay)
+  NEXT_PUBLIC_BLOG_REGISTRY_ADDRESS: ""
+  NEXT_PUBLIC_SOCIAL_ADDRESS: ""
+  NEXT_PUBLIC_PAYMASTER_ADDRESS: ""
+  NEXT_PUBLIC_SESSION_KEY_MANAGER_ADDRESS: ""
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: madara-config
+  namespace: vauban
+data:
+  config.toml: |
+    # Madara L3 Configuration
+    [network]
+    listen_address = "0.0.0.0:9944"
+    ws_address = "0.0.0.0:9945"
+
+    [sequencer]
+    block_time_ms = 6000
+
+    [settlement]
+    l2_rpc = "https://starknet-sepolia.public.blastapi.io"
+    settlement_interval = 100

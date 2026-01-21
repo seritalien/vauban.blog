@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ipfs
+  namespace: vauban
+  labels:
+    app: ipfs
+    app.kubernetes.io/name: ipfs
+    app.kubernetes.io/component: storage
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ipfs
+  template:
+    metadata:
+      labels:
+        app: ipfs
+    spec:
+      containers:
+        - name: ipfs
+          image: ipfs/kubo:latest
+          ports:
+            - containerPort: 8080
+              name: gateway
+            - containerPort: 5001
+              name: api
+            - containerPort: 4001
+              name: swarm
+          env:
+            - name: IPFS_PROFILE
+              value: "server"
+            - name: IPFS_PATH
+              value: "/data/ipfs"
+          volumeMounts:
+            - name: ipfs-data
+              mountPath: /data/ipfs
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          livenessProbe:
+            exec:
+              command: ["ipfs", "id"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            exec:
+              command: ["ipfs", "id"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: ipfs-data
+          persistentVolumeClaim:
+            claimName: ipfs-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ipfs-data
+  namespace: vauban
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: local-path
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ipfs
+  namespace: vauban
+  labels:
+    app: ipfs
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: gateway
+    - port: 5001
+      targetPort: 5001
+      name: api
+    - port: 4001
+      targetPort: 4001
+      name: swarm
+  selector:
+    app: ipfs

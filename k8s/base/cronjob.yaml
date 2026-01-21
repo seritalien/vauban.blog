@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: publish-scheduled
+  namespace: vauban
+  labels:
+    app: publish-scheduled
+spec:
+  schedule: "* * * * *"  # Every minute
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: curl
+              image: curlimages/curl:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  curl -s -f \
+                    -H "Authorization: Bearer $CRON_SECRET" \
+                    http://frontend/api/cron/publish-scheduled
+              env:
+                - name: CRON_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: frontend-secrets
+                      key: CRON_SECRET
+          restartPolicy: OnFailure

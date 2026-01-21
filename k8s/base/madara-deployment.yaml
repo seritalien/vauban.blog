@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: madara
+  namespace: vauban
+  labels:
+    app: madara
+    app.kubernetes.io/name: madara
+    app.kubernetes.io/component: blockchain
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: madara
+  strategy:
+    type: Recreate  # Single node, no rolling update
+  template:
+    metadata:
+      labels:
+        app: madara
+    spec:
+      containers:
+        - name: madara
+          image: ghcr.io/vauban/madara:latest
+          ports:
+            - containerPort: 9944
+              name: rpc
+            - containerPort: 9945
+              name: ws
+          env:
+            - name: RUST_LOG
+              value: "info,madara=debug"
+            - name: RUST_BACKTRACE
+              value: "1"
+          volumeMounts:
+            - name: madara-data
+              mountPath: /data
+            - name: madara-config
+              mountPath: /etc/madara
+              readOnly: true
+            - name: madara-secrets
+              mountPath: /secrets
+              readOnly: true
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9944
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9944
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: madara-data
+          persistentVolumeClaim:
+            claimName: madara-data
+        - name: madara-config
+          configMap:
+            name: madara-config
+        - name: madara-secrets
+          secret:
+            secretName: madara-secrets
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: madara-data
+  namespace: vauban
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: local-path
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: madara
+  namespace: vauban
+  labels:
+    app: madara
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9944
+      targetPort: 9944
+      name: rpc
+    - port: 9945
+      targetPort: 9945
+      name: ws
+  selector:
+    app: madara

@@ -3,6 +3,9 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   reactStrictMode: true,
 
+  // Standalone output for Docker deployment
+  output: 'standalone',
+
   // Experimental features
   experimental: {
     // Enable React 19 features
