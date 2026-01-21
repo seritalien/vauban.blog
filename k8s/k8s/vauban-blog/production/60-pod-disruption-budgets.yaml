@@ -1,0 +1,46 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend
+  namespace: vauban-blog
+  labels:
+    app: vauban-blog
+    component: frontend
+spec:
+  # With 2 replicas, ensure at least 1 is always available
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: vauban-blog
+      component: frontend
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: redis
+  namespace: vauban-blog
+  labels:
+    app: vauban-blog
+    component: redis
+spec:
+  # Single replica, but still want controlled disruptions
+  minAvailable: 0
+  selector:
+    matchLabels:
+      app: vauban-blog
+      component: redis
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ipfs
+  namespace: vauban-blog
+  labels:
+    app: vauban-blog
+    component: ipfs
+spec:
+  minAvailable: 0
+  selector:
+    matchLabels:
+      app: vauban-blog
+      component: ipfs

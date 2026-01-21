@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open-webui
+  namespace: ai-services
+  labels:
+    app: ai-services
+    component: open-webui
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # Single replica with persistent storage
+  selector:
+    matchLabels:
+      app: ai-services
+      component: open-webui
+  template:
+    metadata:
+      labels:
+        app: ai-services
+        component: open-webui
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: open-webui
+          image: ghcr.io/open-webui/open-webui:main
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            # OpenAI-compatible API (LocalAI)
+            - name: OPENAI_API_BASE_URL
+              value: "http://localai:8080/v1"
+            - name: OPENAI_API_KEY
+              value: "not-needed"  # LocalAI doesn't require key
+            # Auth settings
+            - name: WEBUI_AUTH
+              value: "true"
+            - name: WEBUI_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: open-webui-secrets
+                  key: WEBUI_SECRET_KEY
+            # RAG settings
+            - name: RAG_EMBEDDING_MODEL
+              value: "text-embedding"
+            - name: ENABLE_RAG_WEB_SEARCH
+              value: "false"
+            # Data directory
+            - name: DATA_DIR
+              value: /app/backend/data
+            # Disable telemetry
+            - name: DO_NOT_TRACK
+              value: "true"
+            - name: ANONYMIZED_TELEMETRY
+              value: "false"
+          volumeMounts:
+            - name: data
+              mountPath: /app/backend/data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false  # Open WebUI needs write access
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: open-webui-data

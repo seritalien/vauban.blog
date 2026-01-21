@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai-services
+
+resources:
+  - 00-namespace.yaml
+  - 01-sealed-secrets.yaml
+  - 02-configmaps.yaml
+  - 03-pvc.yaml
+  - 10-localai-deployment.yaml
+  - 11-localai-service.yaml
+  - 20-open-webui-deployment.yaml
+  - 21-open-webui-service.yaml
+  - 30-ingress.yaml
+  - 50-network-policies.yaml
+
+images:
+  - name: localai/localai
+    newTag: v2.25.0-ffmpeg
+  - name: ghcr.io/open-webui/open-webui
+    newTag: main
+
+commonLabels:
+  app.kubernetes.io/part-of: ai-services
+  app.kubernetes.io/managed-by: kustomize

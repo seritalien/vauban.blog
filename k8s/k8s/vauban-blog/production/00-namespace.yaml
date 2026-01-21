@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vauban-blog
+  labels:
+    app.kubernetes.io/name: vauban-blog
+    app.kubernetes.io/part-of: vauban-blog
+    environment: production
+    istio-injection: disabled
+---
+# ResourceQuota aligned with existing vauban-prod patterns
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: vauban-blog-quota
+  namespace: vauban-blog
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: 32Gi
+    limits.cpu: "16"
+    limits.memory: 48Gi
+    requests.storage: 500Gi
+    persistentvolumeclaims: "20"
+    pods: "50"
+    services: "20"
+---
+# LimitRange aligned with existing vauban-prod patterns
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: container-limits
+  namespace: vauban-blog
+spec:
+  limits:
+    - type: Container
+      min:
+        cpu: 10m
+        memory: 16Mi
+      max:
+        cpu: 4
+        memory: 8Gi
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi

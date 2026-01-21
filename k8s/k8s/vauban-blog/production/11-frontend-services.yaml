@@ -1,0 +1,60 @@
+# Active service - Production traffic
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-active
+  namespace: vauban-blog
+  labels:
+    app: vauban-blog
+    component: frontend
+    role: active
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+  selector:
+    app: vauban-blog
+    component: frontend
+    # Argo Rollouts will manage the selector to point to active ReplicaSet
+---
+# Preview service - New version testing
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-preview
+  namespace: vauban-blog
+  labels:
+    app: vauban-blog
+    component: frontend
+    role: preview
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+  selector:
+    app: vauban-blog
+    component: frontend
+    # Argo Rollouts will manage the selector to point to preview ReplicaSet
+---
+# Main service (alias to active)
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: vauban-blog
+  labels:
+    app: vauban-blog
+    component: frontend
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+  selector:
+    app: vauban-blog
+    component: frontend

@@ -1,0 +1,59 @@
+# PrometheusRules must be in observability namespace for discovery
+# This file should be applied separately to observability namespace
+# kubectl apply -f 41-prometheusrules.yaml -n observability
+#
+# Or include in ArgoCD with:
+#   destination:
+#     namespace: observability
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: vauban-blog-staging-alerts
+  namespace: observability  # MUST be in observability namespace
+  labels:
+    app.kubernetes.io/name: vauban-blog-staging-alerts
+    release: kube-prometheus-stack
+    prometheus: kube-prometheus-stack
+    role: alert-rules
+spec:
+  groups:
+    - name: vauban-blog-staging.rules
+      interval: 60s
+      rules:
+        - alert: VaubanBlogStagingFrontendDown
+          expr: up{job="vauban-blog-staging/vauban-blog"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: vauban-blog
+            environment: staging
+          annotations:
+            summary: "Vauban Blog staging frontend is down"
+            description: "Frontend pod has been down for more than 5 minutes"
+            runbook_url: "https://docs.vauban.tech/runbooks/frontend-down"
+
+        - alert: VaubanBlogStagingHighErrorRate
+          expr: |
+            (
+              sum(rate(http_requests_total{namespace="vauban-blog-staging", status=~"5.."}[5m]))
+              / sum(rate(http_requests_total{namespace="vauban-blog-staging"}[5m]))
+            ) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+            component: vauban-blog
+            environment: staging
+          annotations:
+            summary: "Vauban Blog staging high error rate"
+            description: "Error rate is above 5% for the last 5 minutes"
+
+        - alert: VaubanBlogStagingRedisDown
+          expr: up{job="vauban-blog-staging/redis"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            component: vauban-blog
+            environment: staging
+          annotations:
+            summary: "Vauban Blog staging Redis is down"
+            description: "Redis cache has been down for more than 5 minutes"

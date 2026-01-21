@@ -1,0 +1,39 @@
+# ArgoCD Application for PrometheusRules (alerts)
+# These must be deployed to observability namespace
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vauban-blog-alerts
+  namespace: argocd
+  labels:
+    app: vauban-blog
+    component: alerts
+spec:
+  project: default
+
+  sources:
+    # Staging alerts
+    - repoURL: https://github.com/vauban-tech/vauban-blog.git
+      targetRevision: develop
+      path: k8s/k8s/vauban-blog/staging
+      kustomize:
+        # Only include the prometheusrules file
+        patches: []
+      include: "41-prometheusrules.yaml"
+
+    # Production alerts
+    - repoURL: https://github.com/vauban-tech/vauban-blog.git
+      targetRevision: main
+      path: k8s/k8s/vauban-blog/production
+      include: "41-prometheusrules.yaml"
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability  # Alerts go to observability namespace
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - PrunePropagationPolicy=foreground

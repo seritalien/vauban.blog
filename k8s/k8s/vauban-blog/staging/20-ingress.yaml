@@ -1,0 +1,68 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vauban-blog
+  namespace: vauban-blog-staging
+  labels:
+    app: vauban-blog
+    environment: staging
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    # Rate limiting
+    traefik.ingress.kubernetes.io/router.middlewares: vauban-blog-staging-rate-limit@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - blog.staging.vauban.tech
+      secretName: vauban-blog-staging-tls
+  rules:
+    - host: blog.staging.vauban.tech
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 3000
+---
+# Rate limiting middleware
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: rate-limit
+  namespace: vauban-blog-staging
+spec:
+  rateLimit:
+    average: 100
+    burst: 200
+    period: 1m
+---
+# IPFS Gateway ingress (internal only, no TLS)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ipfs-gateway
+  namespace: vauban-blog-staging
+  labels:
+    app: vauban-blog
+    component: ipfs
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: ipfs.staging.vauban.tech
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ipfs
+                port:
+                  number: 8080

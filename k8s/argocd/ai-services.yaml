@@ -1,0 +1,51 @@
+# ArgoCD Application for AI Services
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ai-services
+  namespace: argocd
+  labels:
+    app: ai-services
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/vauban-tech/vauban-blog.git
+    targetRevision: HEAD
+    path: k8s/k8s/ai-services
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ai-services
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  # Health check customization
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas  # Ignore HPA changes
+
+  # Info for dashboard
+  info:
+    - name: url
+      value: https://ai.vauban.tech
+    - name: description
+      value: LocalAI + Open WebUI for RAG and editorial assistance

@@ -1,0 +1,126 @@
+# LocalAI model configurations
+# Models are defined as YAML files in the /models directory
+# See: https://localai.io/advanced/#model-configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: localai-models-config
+  namespace: ai-services
+  labels:
+    app: localai
+data:
+  # Mistral 7B - Main chat/instruction model
+  mistral.yaml: |
+    name: mistral
+    backend: llama-cpp
+    parameters:
+      model: mistral-7b-instruct-v0.3.Q4_K_M.gguf
+      temperature: 0.7
+      top_p: 0.9
+      top_k: 40
+      context_size: 4096
+      threads: 4
+      stop:
+        - "</s>"
+        - "[INST]"
+
+  # Embeddings model for RAG
+  embeddings.yaml: |
+    name: text-embedding
+    backend: llama-cpp
+    parameters:
+      model: nomic-embed-text-v1.5.Q4_K_M.gguf
+    embeddings: true
+
+  # Phi-3 Mini - Lightweight model for quick tasks
+  phi3.yaml: |
+    name: phi3
+    backend: llama-cpp
+    parameters:
+      model: phi-3-mini-4k-instruct.Q4_K_M.gguf
+      temperature: 0.7
+      top_p: 0.9
+      context_size: 4096
+      threads: 4
+      stop:
+        - "<|end|>"
+        - "<|endoftext|>"
+
+  # Model download script (run as init container or Job)
+  download-models.sh: |
+    #!/bin/bash
+    set -e
+
+    MODELS_DIR="${MODELS_PATH:-/models}"
+
+    # Mistral 7B Instruct
+    if [ ! -f "$MODELS_DIR/mistral-7b-instruct-v0.3.Q4_K_M.gguf" ]; then
+      echo "Downloading Mistral 7B..."
+      wget -O "$MODELS_DIR/mistral-7b-instruct-v0.3.Q4_K_M.gguf" \
+        "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/mistral-7b-instruct-v0.3.Q4_K_M.gguf"
+    fi
+
+    # Nomic Embed Text for RAG
+    if [ ! -f "$MODELS_DIR/nomic-embed-text-v1.5.Q4_K_M.gguf" ]; then
+      echo "Downloading Nomic Embed Text..."
+      wget -O "$MODELS_DIR/nomic-embed-text-v1.5.Q4_K_M.gguf" \
+        "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q4_K_M.gguf"
+    fi
+
+    # Phi-3 Mini (optional, for lighter tasks)
+    if [ ! -f "$MODELS_DIR/phi-3-mini-4k-instruct.Q4_K_M.gguf" ]; then
+      echo "Downloading Phi-3 Mini..."
+      wget -O "$MODELS_DIR/phi-3-mini-4k-instruct.Q4_K_M.gguf" \
+        "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf"
+    fi
+
+    echo "All models downloaded successfully!"
+    ls -la "$MODELS_DIR"
+---
+# Open WebUI system prompts for different use cases
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: open-webui-prompts
+  namespace: ai-services
+  labels:
+    app: open-webui
+data:
+  blog-editorial-assistant.txt: |
+    Tu es un assistant editorial pour Vauban Blog, une plateforme de blogging decentralisee.
+
+    Contexte technique:
+    - Stack: Madara L3, Arweave, IPFS, Next.js 15, Cairo
+    - Audience: Developpeurs Web3, enthousiastes blockchain, early adopters
+
+    Tes capacites:
+    1. Aide a la redaction d'articles techniques
+    2. Suggestions de titres accrocheurs
+    3. Revision et amelioration du style
+    4. Generation de metadonnees (tags, excerpt)
+    5. Traduction FR <-> EN
+
+    Utilise le contexte RAG pour:
+    - Referencer les articles existants
+    - Maintenir la coherence de ton
+    - Eviter la duplication de contenu
+
+    Reponds toujours en francais sauf si on te demande explicitement l'anglais.
+
+  documentation-assistant.txt: |
+    You are a technical documentation assistant for Vauban Blog infrastructure.
+
+    You have access to:
+    - CLAUDE.md files with project guidelines
+    - Kubernetes manifests and configurations
+    - Cairo smart contract documentation
+    - Deployment runbooks
+
+    Your role:
+    1. Answer questions about the codebase and infrastructure
+    2. Help troubleshoot deployment issues
+    3. Explain architectural decisions
+    4. Guide through common operations
+
+    Always cite specific file paths when referencing documentation.
+    Use code blocks for commands and configuration examples.

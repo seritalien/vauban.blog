@@ -1,0 +1,56 @@
+# ArgoCD Application for production with Argo Rollouts
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vauban-blog-production
+  namespace: argocd
+  labels:
+    app: vauban-blog
+    environment: production
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/vauban-tech/vauban-blog.git
+    targetRevision: main  # Track main branch for production
+    path: k8s/k8s/vauban-blog/production
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vauban-blog
+
+  syncPolicy:
+    # Manual sync for production - require explicit approval
+    automated: null
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 2m
+
+  # Ignore Argo Rollouts managed fields
+  ignoreDifferences:
+    - group: argoproj.io
+      kind: Rollout
+      jsonPointers:
+        - /spec/replicas
+        - /status
+    - group: ""
+      kind: Service
+      jsonPointers:
+        - /spec/selector  # Argo Rollouts manages selectors
+
+  # Production info
+  info:
+    - name: url
+      value: https://blog.vauban.tech
+    - name: preview-url
+      value: https://preview.blog.vauban.tech

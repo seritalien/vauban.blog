@@ -1,0 +1,37 @@
+# LocalAI models storage
+# Stores downloaded GGUF model files
+# Mistral 7B Q4_K_M: ~4.1GB
+# Nomic Embed: ~274MB
+# Phi-3 Mini: ~2.2GB
+# Total: ~7GB, with headroom for future models
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: localai-models
+  namespace: ai-services
+  labels:
+    app: localai
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 20Gi
+---
+# Open WebUI data storage
+# Stores: conversation history, user data, uploaded documents
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: open-webui-data
+  namespace: ai-services
+  labels:
+    app: open-webui
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi

@@ -1,0 +1,45 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend
+  namespace: vauban-blog-staging
+  labels:
+    app: vauban-blog
+    component: frontend
+spec:
+  # For staging with 1 replica, allow disruption but be explicit
+  minAvailable: 0
+  selector:
+    matchLabels:
+      app: vauban-blog
+      component: frontend
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: redis
+  namespace: vauban-blog-staging
+  labels:
+    app: vauban-blog
+    component: redis
+spec:
+  minAvailable: 0
+  selector:
+    matchLabels:
+      app: vauban-blog
+      component: redis
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ipfs
+  namespace: vauban-blog-staging
+  labels:
+    app: vauban-blog
+    component: ipfs
+spec:
+  minAvailable: 0
+  selector:
+    matchLabels:
+      app: vauban-blog
+      component: ipfs

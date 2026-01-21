@@ -1,0 +1,60 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: publish-scheduled
+  namespace: vauban-blog
+  labels:
+    app: vauban-blog
+    component: scheduler
+spec:
+  schedule: "*/5 * * * *"  # Every 5 minutes
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app: vauban-blog
+            component: scheduler
+        spec:
+          priorityClassName: production
+          restartPolicy: OnFailure
+          containers:
+            - name: publish-scheduler
+              image: curlimages/curl:8.5.0
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  curl -X POST \
+                    -H "Authorization: Bearer ${CRON_SECRET}" \
+                    -H "Content-Type: application/json" \
+                    --fail \
+                    --silent \
+                    --show-error \
+                    --max-time 60 \
+                    --retry 3 \
+                    --retry-delay 5 \
+                    "http://frontend-active:3000/api/cron/publish-scheduled"
+              env:
+                - name: CRON_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: vauban-blog-secrets
+                      key: CRON_SECRET
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 16Mi
+                limits:
+                  cpu: 50m
+                  memory: 32Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 1000

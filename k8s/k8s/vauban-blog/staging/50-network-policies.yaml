@@ -1,0 +1,237 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: vauban-blog-staging
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend
+  namespace: vauban-blog-staging
+  labels:
+    app: vauban-blog
+    component: frontend
+spec:
+  podSelector:
+    matchLabels:
+      app: vauban-blog
+      component: frontend
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow from Traefik ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - protocol: TCP
+          port: 3000
+    # Allow from Prometheus for scraping
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 3000
+    # Allow from cronjob
+    - from:
+        - podSelector:
+            matchLabels:
+              app: vauban-blog
+              component: scheduler
+      ports:
+        - protocol: TCP
+          port: 3000
+  egress:
+    # Allow to Redis
+    - to:
+        - podSelector:
+            matchLabels:
+              app: vauban-blog
+              component: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    # Allow to IPFS
+    - to:
+        - podSelector:
+            matchLabels:
+              app: vauban-blog
+              component: ipfs
+      ports:
+        - protocol: TCP
+          port: 5001
+        - protocol: TCP
+          port: 8080
+    # Allow to external services (Arweave, Madara RPC, etc.)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
+    # Allow DNS
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis
+  namespace: vauban-blog-staging
+  labels:
+    app: vauban-blog
+    component: redis
+spec:
+  podSelector:
+    matchLabels:
+      app: vauban-blog
+      component: redis
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Only allow from frontend
+    - from:
+        - podSelector:
+            matchLabels:
+              app: vauban-blog
+              component: frontend
+      ports:
+        - protocol: TCP
+          port: 6379
+    # Allow from Prometheus
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 6379
+  egress: []  # Redis doesn't need egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ipfs
+  namespace: vauban-blog-staging
+  labels:
+    app: vauban-blog
+    component: ipfs
+spec:
+  podSelector:
+    matchLabels:
+      app: vauban-blog
+      component: ipfs
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow from frontend
+    - from:
+        - podSelector:
+            matchLabels:
+              app: vauban-blog
+              component: frontend
+      ports:
+        - protocol: TCP
+          port: 5001
+        - protocol: TCP
+          port: 8080
+    # Allow from Traefik for gateway
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # IPFS swarm (P2P network)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 4001
+        - protocol: UDP
+          port: 4001
+    # DNS
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: scheduler
+  namespace: vauban-blog-staging
+  labels:
+    app: vauban-blog
+    component: scheduler
+spec:
+  podSelector:
+    matchLabels:
+      app: vauban-blog
+      component: scheduler
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []  # Scheduler doesn't need ingress
+  egress:
+    # Allow to frontend
+    - to:
+        - podSelector:
+            matchLabels:
+              app: vauban-blog
+              component: frontend
+      ports:
+        - protocol: TCP
+          port: 3000
+    # DNS
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vauban-blog-config
+  namespace: vauban-blog
+  labels:
+    app: vauban-blog
+data:
+  # Application
+  NODE_ENV: "production"
+  NEXT_PUBLIC_APP_URL: "https://blog.vauban.tech"
+
+  # Blockchain
+  NEXT_PUBLIC_STARKNET_NETWORK: "mainnet"
+  NEXT_PUBLIC_RPC_URL: "https://rpc.vauban.tech"  # Production Madara
+
+  # IPFS (internal service)
+  IPFS_API_URL: "http://ipfs:5001"
+  IPFS_GATEWAY_URL: "https://ipfs.vauban.tech"
+  NEXT_PUBLIC_IPFS_GATEWAY: "https://ipfs.vauban.tech"
+
+  # Arweave
+  ARWEAVE_GATEWAY: "https://arweave.net"
+
+  # Observability
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo.monitoring:4318"
+  OTEL_SERVICE_NAME: "vauban-blog"
+  OTEL_ENVIRONMENT: "production"
+
+  # Features
+  ENABLE_ANALYTICS: "true"
+  ENABLE_NEWSLETTER: "true"

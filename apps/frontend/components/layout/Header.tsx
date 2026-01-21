@@ -2,13 +2,34 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useWallet } from '@/providers/wallet-provider';
+import { useWallet, NetworkId } from '@/providers/wallet-provider';
 import ThemeToggle from './ThemeToggle';
 import { formatAddress } from '@vauban/web3-utils';
 
+// Network badge colors
+const NETWORK_STYLES: Record<NetworkId, { bg: string; text: string; label: string }> = {
+  mainnet: {
+    bg: 'bg-green-100 dark:bg-green-900/30',
+    text: 'text-green-700 dark:text-green-400',
+    label: 'Mainnet',
+  },
+  sepolia: {
+    bg: 'bg-yellow-100 dark:bg-yellow-900/30',
+    text: 'text-yellow-700 dark:text-yellow-400',
+    label: 'Sepolia',
+  },
+  devnet: {
+    bg: 'bg-orange-100 dark:bg-orange-900/30',
+    text: 'text-orange-700 dark:text-orange-400',
+    label: 'Devnet',
+  },
+};
+
 export default function Header() {
-  const { address, isConnected, isConnecting, isDevMode, connectWallet, connectDevAccount, disconnectWallet } = useWallet();
+  const { address, isConnected, isConnecting, isDevMode, network, walletName, connectWallet, connectDevAccount, disconnectWallet, getAccountUrl } = useWallet();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const networkStyle = NETWORK_STYLES[network];
 
   return (
     <header className="sticky top-0 z-50 border-b border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm">
@@ -78,13 +99,33 @@ export default function Header() {
             <div className="hidden sm:flex items-center gap-2">
               {isConnected ? (
                 <>
+                  {/* Network badge */}
+                  <span className={`px-2 py-1 text-xs font-medium rounded ${networkStyle.bg} ${networkStyle.text}`}>
+                    {networkStyle.label}
+                  </span>
+
+                  {/* Wallet info */}
                   <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                    {walletName && !isDevMode && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400">{walletName}</span>
+                    )}
                     {isDevMode && (
                       <span className="text-xs text-orange-600 dark:text-orange-400 font-medium">DEV</span>
                     )}
-                    <span className="text-sm font-mono text-gray-700 dark:text-gray-300">
-                      {formatAddress(address || '', 6, 4)}
-                    </span>
+                    {getAccountUrl(address || '') ? (
+                      <a
+                        href={getAccountUrl(address || '')}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm font-mono text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400"
+                      >
+                        {formatAddress(address || '', 6, 4)}
+                      </a>
+                    ) : (
+                      <span className="text-sm font-mono text-gray-700 dark:text-gray-300">
+                        {formatAddress(address || '', 6, 4)}
+                      </span>
+                    )}
                   </div>
                   {/* Switch dev account button */}
                   {isDevMode && (
@@ -218,9 +259,16 @@ export default function Header() {
               <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
                 {isConnected ? (
                   <div className="flex flex-col gap-3">
+                    {/* Network badge */}
+                    <span className={`self-start px-2 py-1 text-xs font-medium rounded ${networkStyle.bg} ${networkStyle.text}`}>
+                      {networkStyle.label}
+                    </span>
                     <div className="flex items-center gap-2">
                       {isDevMode && (
                         <span className="text-xs text-orange-600 dark:text-orange-400 font-medium">DEV</span>
+                      )}
+                      {walletName && !isDevMode && (
+                        <span className="text-xs text-gray-500 dark:text-gray-400">{walletName}</span>
                       )}
                       <span className="text-sm font-mono text-gray-700 dark:text-gray-300">
                         {formatAddress(address || '', 6, 4)}

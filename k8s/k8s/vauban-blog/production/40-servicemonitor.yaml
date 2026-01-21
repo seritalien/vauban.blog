@@ -1,0 +1,42 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: vauban-blog
+  namespace: vauban-blog
+  labels:
+    app: vauban-blog
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: vauban-blog
+      component: frontend
+  namespaceSelector:
+    matchNames:
+      - vauban-blog
+  endpoints:
+    - port: http
+      path: /api/health
+      interval: 15s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redis
+  namespace: vauban-blog
+  labels:
+    app: vauban-blog
+    component: redis
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: vauban-blog
+      component: redis
+  namespaceSelector:
+    matchNames:
+      - vauban-blog
+  endpoints:
+    - port: redis
+      interval: 15s

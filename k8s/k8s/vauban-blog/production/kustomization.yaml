@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: vauban-blog
+
+resources:
+  - 00-namespace.yaml
+  - 01-sealed-secrets.yaml
+  - 02-configmaps.yaml
+  - 03-pvc.yaml
+  - 10-frontend-rollout.yaml   # Argo Rollout instead of Deployment
+  - 11-frontend-services.yaml  # Blue + Green + Active services
+  - 12-ipfs-deployment.yaml
+  - 13-redis-deployment.yaml
+  - 20-ingress.yaml
+  - 30-cronjob.yaml
+  - 40-servicemonitor.yaml
+  # NOTE: 41-prometheusrules.yaml is NOT included here
+  # It must be applied to observability namespace separately
+  # Use: kubectl apply -f 41-prometheusrules.yaml
+  # Or via ArgoCD alerts application (k8s/argocd/alerts.yaml)
+  - 50-network-policies.yaml
+  - 60-pod-disruption-budgets.yaml
+  - 70-analysistemplate.yaml   # For automated rollback
+
+commonLabels:
+  app: vauban-blog
+  environment: production
+
+images:
+  - name: ghcr.io/vauban/blog-frontend
+    newTag: latest  # Will be replaced by CI/CD

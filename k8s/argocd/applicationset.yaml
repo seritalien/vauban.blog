@@ -1,0 +1,47 @@
+# ApplicationSet for managing all environments
+# Alternative approach: generate Applications from a list
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: vauban-blog
+  namespace: argocd
+spec:
+  generators:
+    - list:
+        elements:
+          - env: staging
+            namespace: vauban-blog-staging
+            branch: develop
+            sync: auto
+            domain: blog.staging.vauban.tech
+          - env: production
+            namespace: vauban-blog
+            branch: main
+            sync: manual
+            domain: blog.vauban.tech
+
+  template:
+    metadata:
+      name: "vauban-blog-{{env}}"
+      namespace: argocd
+      labels:
+        app: vauban-blog
+        environment: "{{env}}"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/vauban-tech/vauban-blog.git
+        targetRevision: "{{branch}}"
+        path: "k8s/k8s/vauban-blog/{{env}}"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{namespace}}"
+      syncPolicy:
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+      info:
+        - name: url
+          value: "https://{{domain}}"

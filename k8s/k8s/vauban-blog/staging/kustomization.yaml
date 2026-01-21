@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: vauban-blog-staging
+
+resources:
+  - 00-namespace.yaml
+  - 01-sealed-secrets.yaml
+  - 02-configmaps.yaml
+  - 03-pvc.yaml
+  - 10-frontend-deployment.yaml
+  - 11-frontend-service.yaml
+  - 12-ipfs-deployment.yaml
+  - 13-redis-deployment.yaml
+  - 20-ingress.yaml
+  - 30-cronjob.yaml
+  - 40-servicemonitor.yaml
+  # NOTE: 41-prometheusrules.yaml is NOT included here
+  # It must be applied to observability namespace separately
+  # Use: kubectl apply -f 41-prometheusrules.yaml
+  # Or via ArgoCD alerts application
+  - 50-network-policies.yaml
+  - 60-pod-disruption-budgets.yaml
+
+images:
+  - name: ghcr.io/vauban/blog-frontend
+    newTag: staging
+
+commonLabels:
+  app.kubernetes.io/part-of: vauban-blog
+  app.kubernetes.io/managed-by: kustomize
+  environment: staging

@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ipfs
+  namespace: vauban-blog-staging
+  labels:
+    app: vauban-blog
+    component: ipfs
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: vauban-blog
+      component: ipfs
+  template:
+    metadata:
+      labels:
+        app: vauban-blog
+        component: ipfs
+        environment: staging
+    spec:
+      priorityClassName: staging
+      containers:
+        - name: ipfs
+          image: ipfs/kubo:latest
+          ports:
+            - name: gateway
+              containerPort: 8080
+            - name: api
+              containerPort: 5001
+            - name: swarm
+              containerPort: 4001
+          env:
+            - name: IPFS_PROFILE
+              value: "server"
+            - name: IPFS_PATH
+              value: "/data/ipfs"
+          volumeMounts:
+            - name: ipfs-data
+              mountPath: /data/ipfs
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          livenessProbe:
+            exec:
+              command: ["ipfs", "id"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            exec:
+              command: ["ipfs", "id"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: ipfs-data
+          persistentVolumeClaim:
+            claimName: ipfs-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ipfs
+  namespace: vauban-blog-staging
+  labels:
+    app: vauban-blog
+    component: ipfs
+spec:
+  type: ClusterIP
+  ports:
+    - name: gateway
+      port: 8080
+      targetPort: 8080
+    - name: api
+      port: 5001
+      targetPort: 5001
+  selector:
+    app: vauban-blog
+    component: ipfs

@@ -1,0 +1,84 @@
+# ArgoCD AppProject for Vauban Blog
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: vauban-blog
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Vauban Blog - Decentralized publishing platform
+
+  # Source repositories
+  sourceRepos:
+    - https://github.com/vauban-tech/vauban-blog.git
+    - https://github.com/vauban-tech/*.git
+
+  # Destination clusters and namespaces
+  destinations:
+    - namespace: vauban-blog
+      server: https://kubernetes.default.svc
+    - namespace: vauban-blog-staging
+      server: https://kubernetes.default.svc
+
+  # Allowed cluster-scoped resources
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: networking.k8s.io
+      kind: IngressClass
+
+  # Allowed namespace-scoped resources
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: "*"
+    - group: apps
+      kind: "*"
+    - group: batch
+      kind: "*"
+    - group: networking.k8s.io
+      kind: "*"
+    - group: policy
+      kind: "*"
+    - group: monitoring.coreos.com
+      kind: "*"
+    - group: traefik.io
+      kind: "*"
+    - group: bitnami.com
+      kind: SealedSecret
+    - group: argoproj.io
+      kind: Rollout
+    - group: argoproj.io
+      kind: AnalysisTemplate
+
+  # Roles for RBAC
+  roles:
+    - name: developer
+      description: Developer access to staging
+      policies:
+        - p, proj:vauban-blog:developer, applications, get, vauban-blog/vauban-blog-staging, allow
+        - p, proj:vauban-blog:developer, applications, sync, vauban-blog/vauban-blog-staging, allow
+      groups:
+        - vauban-developers
+
+    - name: admin
+      description: Admin access to all environments
+      policies:
+        - p, proj:vauban-blog:admin, applications, *, vauban-blog/*, allow
+      groups:
+        - vauban-admins
+
+  # Sync windows (optional - restrict production syncs to business hours)
+  syncWindows:
+    - kind: allow
+      schedule: "0 9-18 * * 1-5"  # Mon-Fri 9AM-6PM
+      duration: 10h
+      applications:
+        - vauban-blog-production
+      manualSync: true
+    - kind: deny
+      schedule: "0 0-8,19-23 * * *"  # Outside business hours
+      duration: 14h
+      applications:
+        - vauban-blog-production
+      manualSync: true

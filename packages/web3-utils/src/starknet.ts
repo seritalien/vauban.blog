@@ -1,4 +1,7 @@
-import { Contract, RpcProvider, Account, shortString } from 'starknet';
+import { Contract, RpcProvider, Account, AccountInterface, shortString } from 'starknet';
+
+// Use AccountInterface to support both Account and wallet-provided accounts
+type AccountLike = Account | AccountInterface;
 import type { PostMetadata, CommentMetadata } from '@vauban/shared-types';
 
 // ============================================================================
@@ -227,7 +230,7 @@ function joinFelt252Parts(part1: string, part2: string): string {
  * Publish a post (requires account)
  */
 export async function publishPost(
-  account: Account,
+  account: AccountLike,
   arweaveTxId: string,
   ipfsCid: string,
   contentHash: string,
@@ -286,7 +289,7 @@ export async function hasAccess(postId: string, userAddress: string): Promise<bo
 /**
  * Purchase access to a paid post
  */
-export async function purchasePost(account: Account, postId: string): Promise<string> {
+export async function purchasePost(account: AccountLike, postId: string): Promise<string> {
   const address = getBlogRegistryAddress();
 
   try {
@@ -328,7 +331,7 @@ export async function getPostPrice(postId: string): Promise<string> {
  * Update a post (requires admin account)
  */
 export async function updatePost(
-  account: Account,
+  account: AccountLike,
   postId: string,
   arweaveTxId: string,
   ipfsCid: string,
@@ -366,7 +369,7 @@ export async function updatePost(
 /**
  * Delete a post (soft delete - requires admin account)
  */
-export async function deletePost(account: Account, postId: string): Promise<string> {
+export async function deletePost(account: AccountLike, postId: string): Promise<string> {
   const address = getBlogRegistryAddress();
 
   try {
@@ -528,7 +531,7 @@ export async function getCommentsForPost(
  * Add a comment (requires account or session key)
  */
 export async function addComment(
-  account: Account,
+  account: AccountLike,
   postId: string,
   contentHash: string,
   parentCommentId: string = '0'
@@ -554,7 +557,7 @@ export async function addComment(
 /**
  * Like a post
  */
-export async function likePost(account: Account, postId: string): Promise<string> {
+export async function likePost(account: AccountLike, postId: string): Promise<string> {
   const address = getSocialAddress();
 
   try {
@@ -614,7 +617,7 @@ export async function getPostLikes(postId: string): Promise<number> {
 /**
  * Unlike a post
  */
-export async function unlikePost(account: Account, postId: string): Promise<string> {
+export async function unlikePost(account: AccountLike, postId: string): Promise<string> {
   const address = getSocialAddress();
 
   try {
@@ -636,7 +639,7 @@ export async function unlikePost(account: Account, postId: string): Promise<stri
 /**
  * Like a comment
  */
-export async function likeComment(account: Account, commentId: string): Promise<string> {
+export async function likeComment(account: AccountLike, commentId: string): Promise<string> {
   const address = getSocialAddress();
 
   try {
@@ -658,7 +661,7 @@ export async function likeComment(account: Account, commentId: string): Promise<
 /**
  * Unlike a comment
  */
-export async function unlikeComment(account: Account, commentId: string): Promise<string> {
+export async function unlikeComment(account: AccountLike, commentId: string): Promise<string> {
   const address = getSocialAddress();
 
   try {
@@ -780,7 +783,7 @@ export async function getSessionKeyManager(): Promise<string> {
  * Set the session key manager address (admin only)
  */
 export async function setSessionKeyManager(
-  account: Account,
+  account: AccountLike,
   managerAddress: string
 ): Promise<string> {
   const address = getSocialAddress();

@@ -1,0 +1,69 @@
+# AnalysisTemplate for automated rollout health checks
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: frontend-health-check
+  namespace: vauban-blog
+spec:
+  args:
+    - name: service-name
+  metrics:
+    # Check if the service responds with 200 OK
+    - name: health-check
+      interval: 10s
+      count: 5
+      successCondition: result == "healthy"
+      failureLimit: 2
+      provider:
+        web:
+          url: "http://{{args.service-name}}.vauban-blog.svc.cluster.local:3000/api/health"
+          jsonPath: "{$.status}"
+          timeoutSeconds: 5
+
+    # Check error rate from Prometheus
+    - name: error-rate
+      interval: 30s
+      count: 3
+      successCondition: result[0] < 0.05
+      failureLimit: 1
+      provider:
+        prometheus:
+          address: http://prometheus-operated.monitoring.svc.cluster.local:9090
+          query: |
+            sum(rate(http_requests_total{namespace="vauban-blog", service="{{args.service-name}}", status=~"5.."}[2m]))
+            / sum(rate(http_requests_total{namespace="vauban-blog", service="{{args.service-name}}"}[2m]))
+
+    # Check P99 latency
+    - name: latency-p99
+      interval: 30s
+      count: 3
+      successCondition: result[0] < 2
+      failureLimit: 1
+      provider:
+        prometheus:
+          address: http://prometheus-operated.monitoring.svc.cluster.local:9090
+          query: |
+            histogram_quantile(0.99,
+              sum(rate(http_request_duration_seconds_bucket{namespace="vauban-blog", service="{{args.service-name}}"}[2m]))
+              by (le)
+            )
+---
+# AnalysisTemplate for post-promotion verification
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: frontend-post-promotion
+  namespace: vauban-blog
+spec:
+  metrics:
+    - name: success-rate
+      interval: 60s
+      count: 5
+      successCondition: result[0] > 0.99
+      failureLimit: 2
+      provider:
+        prometheus:
+          address: http://prometheus-operated.monitoring.svc.cluster.local:9090
+          query: |
+            sum(rate(http_requests_total{namespace="vauban-blog", status=~"2.."}[5m]))
+            / sum(rate(http_requests_total{namespace="vauban-blog"}[5m]))

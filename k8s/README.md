@@ -1,223 +1,114 @@
-# Vauban Blog - Kubernetes Deployment
+# Kubernetes Deployment for Vauban Blog
 
-Kubernetes/k3s manifests for deploying Vauban Blog.
+This directory contains Kubernetes manifests for deploying Vauban Blog to a k3s cluster.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         k3s Cluster                             │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ │
-│  │   Traefik   │──│   Ingress   │──│  vauban.blog            │ │
-│  │  (Ingress)  │  │             │  │  www.vauban.blog        │ │
-│  └─────────────┘  └──────┬──────┘  └─────────────────────────┘ │
-│                          │                                      │
-│  ┌───────────────────────▼───────────────────────────────────┐ │
-│  │                    Frontend (x3)                          │ │
-│  │               Next.js 15 + React 19                       │ │
-│  │                   Port 3000                               │ │
-│  └───────────────────────┬───────────────────────────────────┘ │
-│                          │                                      │
-│  ┌──────────┐  ┌─────────▼──────────┐  ┌───────────────────┐   │
-│  │  Redis   │  │       IPFS         │  │      Madara       │   │
-│  │  Cache   │  │   Content Store    │  │   L3 Blockchain   │   │
-│  │  :6379   │  │  :5001 :8080       │  │   :9944 :9945     │   │
-│  └──────────┘  └────────────────────┘  └───────────────────┘   │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                     CronJob                              │   │
-│  │            publish-scheduled (every 1m)                  │   │
-│  └─────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         PRODUCTION                                   │
+│  ┌──────────────────┐  Blue-Green  ┌──────────────────┐             │
+│  │  frontend-blue   │ ←─────────→  │  frontend-green  │             │
+│  └────────┬─────────┘              └────────┬─────────┘             │
+│           │ Argo Rollouts                   │                       │
+│           └─────────────┬───────────────────┘                       │
+│                         ▼                                            │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │                    Traefik Ingress                            │   │
+│  │              blog.vauban.tech (active)                        │   │
+│  │         preview.blog.vauban.tech (preview)                    │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│                                                                      │
+│  Supporting Services:                                                │
+│  ┌─────────┐  ┌─────────┐  ┌─────────────────────┐                 │
+│  │  Redis  │  │  IPFS   │  │ CronJob (scheduler) │                 │
+│  └─────────┘  └─────────┘  └─────────────────────┘                 │
+└─────────────────────────────────────────────────────────────────────┘
 
-## Quick Start
-
-### Prerequisites
-
-- k3s cluster running
-- kubectl configured
-- (Optional) kustomize CLI
-
-### Deploy to Staging
-
-```bash
-./deploy.sh staging
-```
-
-### Deploy to Production
-
-```bash
-./deploy.sh production
-```
-
-### Manual Deployment
-
-```bash
-# Staging
-kubectl apply -k overlays/staging
-
-# Production
-kubectl apply -k overlays/production
+┌─────────────────────────────────────────────────────────────────────┐
+│                         STAGING                                      │
+│  ┌──────────────────┐                                               │
+│  │     frontend     │ (single replica, RollingUpdate)               │
+│  └────────┬─────────┘                                               │
+│           │                                                          │
+│  ┌────────▼────────────────────────────────────────────────────┐    │
+│  │              blog.staging.vauban.tech                        │    │
+│  └──────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Directory Structure
 
 ```
 k8s/
-├── base/                          # Base manifests
-│   ├── namespace.yaml             # Namespace definition
-│   ├── frontend-deployment.yaml   # Frontend Deployment + PVC
-│   ├── frontend-service.yaml      # Frontend Service
-│   ├── ipfs-deployment.yaml       # IPFS Deployment + PVC + Service
-│   ├── redis-deployment.yaml      # Redis Deployment + PVC + Service
-│   ├── madara-deployment.yaml     # Madara Deployment + PVC + Service
-│   ├── configmaps.yaml            # ConfigMaps for all services
-│   ├── secrets.yaml               # Secrets templates (DO NOT commit real values!)
-│   ├── ingress.yaml               # Ingress + Traefik middleware
-│   ├── cronjob.yaml               # Scheduled publishing CronJob
-│   └── kustomization.yaml         # Base kustomization
+├── argocd/                    # ArgoCD Application manifests
+│   ├── staging.yaml          # Staging app (auto-sync)
+│   ├── production.yaml       # Production app (manual sync)
+│   ├── applicationset.yaml   # Alternative: ApplicationSet approach
+│   └── project.yaml          # AppProject with RBAC
 │
-├── overlays/
-│   ├── staging/
-│   │   └── kustomization.yaml     # Staging-specific config
-│   └── production/
-│       └── kustomization.yaml     # Production-specific config
-│
-├── deploy.sh                      # Deployment script
-└── README.md                      # This file
+└── k8s/vauban-blog/
+    ├── staging/              # Staging environment
+    │   ├── 00-namespace.yaml
+    │   ├── 01-sealed-secrets.yaml
+    │   ├── ...
+    │   └── kustomization.yaml
+    │
+    └── production/           # Production (Blue-Green)
+        ├── 10-frontend-rollout.yaml    # Argo Rollout
+        ├── 70-analysistemplate.yaml    # Health checks
+        └── kustomization.yaml
 ```
 
-## Configuration
+## Quick Start
 
-### Environment Variables
-
-Configure in `overlays/{env}/kustomization.yaml`:
-
-| Variable | Description |
-|----------|-------------|
-| `NEXT_PUBLIC_MADARA_RPC` | Madara RPC endpoint |
-| `NEXT_PUBLIC_IPFS_GATEWAY_URL` | IPFS gateway URL |
-| `NEXT_PUBLIC_BLOG_REGISTRY_ADDRESS` | Blog registry contract address |
-| `NEXT_PUBLIC_SOCIAL_ADDRESS` | Social contract address |
-| `M2M_API_KEY` | M2M API key for publishing |
-| `CRON_SECRET` | Secret for cron job authentication |
-
-### Secrets
-
-**Important**: Never commit real secrets to git!
-
-For production, use one of:
-- [Sealed Secrets](https://sealed-secrets.netlify.app/)
-- [External Secrets Operator](https://external-secrets.io/)
-- k3s secrets from file
+### 1. Generate Sealed Secrets
 
 ```bash
-# Create secrets from file
-kubectl create secret generic frontend-secrets \
-  --from-literal=M2M_API_KEY=your-key \
-  --from-literal=CRON_SECRET=your-secret \
-  -n vauban
+# Staging
+kubectl create secret generic vauban-blog-secrets \
+  --namespace=vauban-blog-staging \
+  --from-literal=M2M_API_KEY="$(openssl rand -base64 32)" \
+  --from-literal=CRON_SECRET="$(openssl rand -base64 32)" \
+  --dry-run=client -o yaml | \
+  kubeseal --controller-name=sealed-secrets \
+           --controller-namespace=sealed-secrets \
+           -o yaml > k8s/k8s/vauban-blog/staging/01-sealed-secrets.yaml
 ```
 
-### TLS Certificates
-
-Using cert-manager with Let's Encrypt:
+### 2. Deploy with ArgoCD
 
 ```bash
-# Install cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
-
-# Create ClusterIssuer
-kubectl apply -f - <<EOF
-apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: letsencrypt-prod
-spec:
-  acme:
-    server: https://acme-v02.api.letsencrypt.org/directory
-    email: your-email@example.com
-    privateKeySecretRef:
-      name: letsencrypt-prod
-    solvers:
-    - http01:
-        ingress:
-          class: traefik
-EOF
+kubectl apply -f k8s/argocd/project.yaml
+kubectl apply -f k8s/argocd/staging.yaml
+kubectl apply -f k8s/argocd/production.yaml
 ```
 
-## Monitoring
-
-### Check pod status
+### 3. Or Deploy with Kustomize
 
 ```bash
-kubectl get pods -n vauban
+kubectl apply -k k8s/k8s/vauban-blog/staging/
+kubectl apply -k k8s/k8s/vauban-blog/production/
 ```
 
-### View logs
+## Blue-Green Rollouts (Production)
 
 ```bash
-# Frontend logs
-kubectl logs -f deployment/frontend -n vauban
+# Check status
+kubectl argo rollouts status frontend -n vauban-blog
 
-# Madara logs
-kubectl logs -f deployment/madara -n vauban
+# Promote preview to active
+kubectl argo rollouts promote frontend -n vauban-blog
+
+# Rollback
+kubectl argo rollouts undo frontend -n vauban-blog
 ```
 
-### Port forward for debugging
+## URLs
 
-```bash
-# Access frontend locally
-kubectl port-forward svc/frontend 3000:80 -n vauban
-
-# Access IPFS API
-kubectl port-forward svc/ipfs 5001:5001 -n vauban
-
-# Access Madara RPC
-kubectl port-forward svc/madara 9944:9944 -n vauban
-```
-
-## Scaling
-
-```bash
-# Scale frontend
-kubectl scale deployment/frontend --replicas=5 -n vauban
-```
-
-## Troubleshooting
-
-### Pod not starting
-
-```bash
-kubectl describe pod <pod-name> -n vauban
-kubectl logs <pod-name> -n vauban --previous
-```
-
-### PVC stuck in Pending
-
-```bash
-kubectl get pvc -n vauban
-kubectl describe pvc <pvc-name> -n vauban
-```
-
-### Ingress not working
-
-```bash
-kubectl get ingress -n vauban
-kubectl describe ingress vauban-ingress -n vauban
-kubectl logs -n kube-system -l app.kubernetes.io/name=traefik
-```
-
-## CI/CD
-
-GitHub Actions workflow (`.github/workflows/ci-cd.yml`):
-
-1. **Test**: Run tests on all PRs
-2. **Build**: Build and push Docker image to GHCR
-3. **Deploy Staging**: Auto-deploy to staging on push to main
-4. **Deploy Production**: Deploy on tag push (v*)
-
-Required secrets in GitHub:
-- `KUBECONFIG_STAGING`: Base64-encoded kubeconfig for staging
-- `KUBECONFIG_PRODUCTION`: Base64-encoded kubeconfig for production
+| Environment | URL |
+|-------------|-----|
+| Staging | https://blog.staging.vauban.tech |
+| Production | https://blog.vauban.tech |
+| Preview | https://preview.blog.vauban.tech |
+| IPFS Gateway | https://ipfs.vauban.tech |

@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vauban-blog-config
+  namespace: vauban-blog-staging
+data:
+  # Application
+  NODE_ENV: "production"
+  NEXT_PUBLIC_BASE_URL: "https://blog.staging.vauban.tech"
+
+  # Blockchain (Madara L3 or use existing Starknet)
+  NEXT_PUBLIC_MADARA_RPC: "https://sepolia.rpc.vauban.tech"
+
+  # IPFS (internal cluster service)
+  NEXT_PUBLIC_IPFS_GATEWAY_URL: "http://ipfs:8080"
+  NEXT_PUBLIC_IPFS_API_URL: "http://ipfs:5001"
+  IPFS_API_URL: "http://ipfs:5001"
+
+  # Contract addresses (Sepolia testnet)
+  NEXT_PUBLIC_BLOG_REGISTRY_ADDRESS: ""
+  NEXT_PUBLIC_SOCIAL_ADDRESS: ""
+  NEXT_PUBLIC_PAYMASTER_ADDRESS: ""
+  NEXT_PUBLIC_SESSION_KEY_MANAGER_ADDRESS: ""
+
+  # Observability
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo.observability.svc:4318"
+  OTEL_SERVICE_NAME: "vauban-blog-frontend"
+  OTEL_RESOURCE_ATTRIBUTES: "service.namespace=vauban-blog-staging,deployment.environment=staging"

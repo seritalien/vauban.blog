@@ -1,0 +1,92 @@
+# PrometheusRules must be in observability namespace for discovery
+# Apply with: kubectl apply -f 41-prometheusrules.yaml -n observability
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: vauban-blog-production-alerts
+  namespace: observability  # MUST be in observability namespace
+  labels:
+    app.kubernetes.io/name: vauban-blog-production-alerts
+    release: kube-prometheus-stack
+    prometheus: kube-prometheus-stack
+    role: alert-rules
+spec:
+  groups:
+    - name: vauban-blog-production.rules
+      interval: 30s
+      rules:
+        - alert: VaubanBlogProductionFrontendDown
+          expr: up{job="vauban-blog/vauban-blog"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            component: vauban-blog
+            environment: production
+          annotations:
+            summary: "Vauban Blog production frontend is down"
+            description: "Frontend pod has been down for more than 2 minutes"
+            runbook_url: "https://docs.vauban.tech/runbooks/frontend-down"
+
+        - alert: VaubanBlogProductionHighErrorRate
+          expr: |
+            (
+              sum(rate(http_requests_total{namespace="vauban-blog", status=~"5.."}[5m]))
+              / sum(rate(http_requests_total{namespace="vauban-blog"}[5m]))
+            ) > 0.01
+          for: 5m
+          labels:
+            severity: critical
+            component: vauban-blog
+            environment: production
+          annotations:
+            summary: "Vauban Blog production high error rate"
+            description: "Error rate is above 1% for the last 5 minutes"
+
+        - alert: VaubanBlogProductionHighLatency
+          expr: |
+            histogram_quantile(0.99,
+              sum(rate(http_request_duration_seconds_bucket{namespace="vauban-blog"}[5m]))
+              by (le)
+            ) > 2
+          for: 5m
+          labels:
+            severity: warning
+            component: vauban-blog
+            environment: production
+          annotations:
+            summary: "Vauban Blog production high latency"
+            description: "P99 latency is above 2 seconds"
+
+        - alert: VaubanBlogProductionRedisDown
+          expr: up{job="vauban-blog/redis"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            component: vauban-blog
+            environment: production
+          annotations:
+            summary: "Vauban Blog production Redis is down"
+            description: "Redis cache has been down for more than 2 minutes"
+
+        - alert: VaubanBlogProductionPodRestart
+          expr: increase(kube_pod_container_status_restarts_total{namespace="vauban-blog"}[1h]) > 3
+          for: 0m
+          labels:
+            severity: warning
+            component: vauban-blog
+            environment: production
+          annotations:
+            summary: "Vauban Blog pod restarting frequently"
+            description: "Pod {{ $labels.pod }} has restarted more than 3 times in the last hour"
+
+        - alert: VaubanBlogProductionRolloutStuck
+          expr: |
+            kube_rollout_status_replicas_unavailable{namespace="vauban-blog"} > 0
+          for: 10m
+          labels:
+            severity: warning
+            component: vauban-blog
+            environment: production
+          annotations:
+            summary: "Vauban Blog rollout is stuck"
+            description: "Rollout has unavailable replicas for more than 10 minutes"

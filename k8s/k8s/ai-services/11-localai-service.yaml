@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: localai
+  namespace: ai-services
+  labels:
+    app: ai-services
+    component: localai
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  selector:
+    app: ai-services
+    component: localai

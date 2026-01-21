@@ -1,8 +1,49 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { connect, disconnect, StarknetWindowObject } from 'starknetkit';
-import { Account, RpcProvider } from 'starknet';
+import { Account, RpcProvider, constants, AccountInterface } from 'starknet';
+
+// ============================================================================
+// NETWORK CONFIGURATION
+// ============================================================================
+type NetworkId = 'mainnet' | 'sepolia' | 'devnet';
+
+interface NetworkConfig {
+  chainId: string;
+  name: string;
+  rpcUrl: string;
+  explorerUrl: string;
+}
+
+const NETWORKS: Record<NetworkId, NetworkConfig> = {
+  mainnet: {
+    chainId: constants.StarknetChainId.SN_MAIN,
+    name: 'Starknet Mainnet',
+    rpcUrl: process.env.NEXT_PUBLIC_MAINNET_RPC || 'https://starknet-mainnet.public.blastapi.io',
+    explorerUrl: 'https://starkscan.co',
+  },
+  sepolia: {
+    chainId: constants.StarknetChainId.SN_SEPOLIA,
+    name: 'Starknet Sepolia',
+    rpcUrl: process.env.NEXT_PUBLIC_SEPOLIA_RPC || 'https://starknet-sepolia.public.blastapi.io',
+    explorerUrl: 'https://sepolia.starkscan.co',
+  },
+  devnet: {
+    chainId: 'SN_DEVNET',
+    name: 'Local Devnet',
+    rpcUrl: '/api/rpc', // Proxy to avoid CORS
+    explorerUrl: '',
+  },
+};
+
+// Determine network from env
+function getNetworkFromEnv(): NetworkId {
+  const networkEnv = process.env.NEXT_PUBLIC_STARKNET_NETWORK?.toLowerCase();
+  if (networkEnv === 'mainnet') return 'mainnet';
+  if (networkEnv === 'sepolia') return 'sepolia';
+  return 'devnet';
+}
 
 // ============================================================================
 // DEVNET ACCOUNTS (pre-funded on Madara devnet)
@@ -20,39 +61,69 @@ const DEVNET_ACCOUNTS = [
   },
 ];
 
+// ============================================================================
+// CONTEXT TYPES
+// ============================================================================
 interface WalletContextType {
+  // Connection state
   address: string | null;
-  account: Account | null;
+  account: Account | AccountInterface | null;
   isConnected: boolean;
   isConnecting: boolean;
   isDevMode: boolean;
+
+  // Network info
+  network: NetworkId;
+  networkConfig: NetworkConfig;
+
+  // Wallet info
+  wallet: StarknetWindowObject | null;
+  walletName: string | null;
+
+  // Actions
   connectWallet: () => Promise<void>;
   connectDevAccount: (index?: number) => void;
   disconnectWallet: () => void;
-  wallet: StarknetWindowObject | null;
+  switchNetwork: (network: NetworkId) => void;
+
+  // Helpers
+  getExplorerUrl: (txHash: string) => string;
+  getAccountUrl: (address: string) => string;
 }
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [address, setAddress] = useState<string | null>(null);
-  const [account, setAccount] = useState<Account | null>(null);
+  const [account, setAccount] = useState<Account | AccountInterface | null>(null);
   const [wallet, setWallet] = useState<StarknetWindowObject | null>(null);
+  const [walletName, setWalletName] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDevMode, setIsDevMode] = useState(false);
+  const [network, setNetwork] = useState<NetworkId>(getNetworkFromEnv());
+
+  const networkConfig = NETWORKS[network];
+
+  // Get explorer URLs
+  const getExplorerUrl = useCallback((txHash: string) => {
+    if (!networkConfig.explorerUrl) return '';
+    return `${networkConfig.explorerUrl}/tx/${txHash}`;
+  }, [networkConfig.explorerUrl]);
+
+  const getAccountUrl = useCallback((addr: string) => {
+    if (!networkConfig.explorerUrl) return '';
+    return `${networkConfig.explorerUrl}/contract/${addr}`;
+  }, [networkConfig.explorerUrl]);
 
   // Connect using devnet account (no wallet extension needed)
-  const connectDevAccount = (index: number = 0) => {
+  const connectDevAccount = useCallback((index: number = 0) => {
     const devAccount = DEVNET_ACCOUNTS[index];
     if (!devAccount) {
       console.error('Invalid devnet account index');
       return;
     }
 
-    // Use local proxy to avoid CORS issues
-    const nodeUrl = '/api/rpc';
-    const provider = new RpcProvider({ nodeUrl });
-
+    const provider = new RpcProvider({ nodeUrl: NETWORKS.devnet.rpcUrl });
     const acc = new Account(
       provider,
       devAccount.address,
@@ -63,6 +134,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setAccount(acc);
     setIsDevMode(true);
     setWallet(null);
+    setWalletName('Devnet');
+    setNetwork('devnet');
 
     // Store in localStorage
     if (typeof window !== 'undefined') {
@@ -72,16 +145,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
 
     console.log(`Connected to ${devAccount.name}: ${devAccount.address}`);
-  };
+  }, []);
 
-  const connectWallet = async () => {
+  // Connect wallet via starknetkit
+  const connectWallet = useCallback(async () => {
     try {
       setIsConnecting(true);
+
       const { wallet: connectedWallet } = await connect({
         webWalletUrl: 'https://web.argent.xyz',
         argentMobileOptions: {
           dappName: 'Vauban Blog',
-          url: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3005',
+          url: typeof window !== 'undefined' ? window.location.origin : 'https://blog.vauban.tech',
         },
       });
 
@@ -89,40 +164,53 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         throw new Error('No wallet connected');
       }
 
-      // Note: starknetkit v2 API - wallet is already connected after connect() succeeds
-      // Using 'as any' for type compatibility with starknetkit v2 API changes
-      const wallet = connectedWallet as any;
-      const walletAddress = wallet.selectedAddress || wallet.account?.address;
+      // Starknetkit v2 API
+      const walletAny = connectedWallet as any;
+      const walletAddress = walletAny.selectedAddress || walletAny.account?.address;
 
-      if (walletAddress && wallet.account) {
-        const nodeUrl = process.env.NEXT_PUBLIC_MADARA_RPC || 'http://localhost:9944';
-        const provider = new RpcProvider({ nodeUrl });
+      if (!walletAddress) {
+        throw new Error('Could not get wallet address');
+      }
 
-        const acc = new Account(
-          provider,
-          walletAddress,
-          wallet.account
-        );
-
-        setWallet(connectedWallet);
-        setAddress(walletAddress);
-        setAccount(acc);
-        setIsDevMode(false);
-
-        // Store in localStorage
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('wallet_connected', 'true');
-          localStorage.setItem('wallet_address', walletAddress);
+      // Detect wallet's network from chainId
+      let detectedNetwork: NetworkId = network;
+      if (walletAny.chainId) {
+        if (walletAny.chainId === constants.StarknetChainId.SN_MAIN) {
+          detectedNetwork = 'mainnet';
+        } else if (walletAny.chainId === constants.StarknetChainId.SN_SEPOLIA) {
+          detectedNetwork = 'sepolia';
         }
       }
+
+      // Use the wallet's account directly - it already has the correct provider
+      // This ensures transactions are signed and sent on the correct network
+      const walletAccount = walletAny.account as AccountInterface;
+
+      setWallet(connectedWallet);
+      setAddress(walletAddress);
+      setAccount(walletAccount);
+      setIsDevMode(false);
+      setWalletName(walletAny.name || walletAny.id || 'Wallet');
+      setNetwork(detectedNetwork);
+
+      // Store in localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('wallet_connected', 'true');
+        localStorage.setItem('wallet_address', walletAddress);
+        localStorage.setItem('wallet_network', detectedNetwork);
+      }
+
+      console.log(`Connected to ${walletAny.name || 'wallet'} on ${NETWORKS[detectedNetwork].name}: ${walletAddress}`);
     } catch (error) {
       console.error('Failed to connect wallet:', error);
+      throw error;
     } finally {
       setIsConnecting(false);
     }
-  };
+  }, [network]);
 
-  const disconnectWallet = () => {
+  // Disconnect wallet
+  const disconnectWallet = useCallback(() => {
     if (wallet) {
       disconnect();
     }
@@ -130,26 +218,55 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setAddress(null);
     setAccount(null);
     setIsDevMode(false);
+    setWalletName(null);
 
     if (typeof window !== 'undefined') {
       localStorage.removeItem('wallet_connected');
       localStorage.removeItem('wallet_address');
       localStorage.removeItem('dev_account_index');
+      localStorage.removeItem('wallet_network');
     }
-  };
+  }, [wallet]);
+
+  // Switch network (only for devnet, wallet networks are determined by wallet)
+  const switchNetwork = useCallback((newNetwork: NetworkId) => {
+    if (isDevMode && newNetwork === 'devnet') {
+      // Already in devnet, nothing to do
+      return;
+    }
+
+    if (newNetwork === 'devnet') {
+      // Switching to devnet requires disconnecting wallet
+      disconnectWallet();
+      connectDevAccount(0);
+    } else {
+      // For mainnet/sepolia, user needs to reconnect with correct network in wallet
+      console.log(`To switch to ${NETWORKS[newNetwork].name}, please change network in your wallet and reconnect.`);
+    }
+  }, [isDevMode, disconnectWallet, connectDevAccount]);
 
   // Auto-reconnect on page load
   useEffect(() => {
     const wasConnected = typeof window !== 'undefined' && localStorage.getItem('wallet_connected');
+
     if (wasConnected === 'dev') {
       // Reconnect to devnet account
       const indexStr = localStorage.getItem('dev_account_index');
       const index = indexStr ? parseInt(indexStr, 10) : 0;
       connectDevAccount(index);
     } else if (wasConnected === 'true') {
-      connectWallet();
+      // Try to reconnect wallet
+      connectWallet().catch((err) => {
+        console.warn('Auto-reconnect failed:', err);
+        // Clear stored state if reconnect fails
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('wallet_connected');
+          localStorage.removeItem('wallet_address');
+          localStorage.removeItem('wallet_network');
+        }
+      });
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <WalletContext.Provider
@@ -159,10 +276,16 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         isConnected: !!address,
         isConnecting,
         isDevMode,
+        network,
+        networkConfig,
+        wallet,
+        walletName,
         connectWallet,
         connectDevAccount,
         disconnectWallet,
-        wallet,
+        switchNetwork,
+        getExplorerUrl,
+        getAccountUrl,
       }}
     >
       {children}
@@ -177,3 +300,6 @@ export function useWallet() {
   }
   return context;
 }
+
+// Export network config for use elsewhere
+export { NETWORKS, type NetworkId, type NetworkConfig };

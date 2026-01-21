@@ -2,31 +2,36 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ipfs
-  namespace: vauban
+  namespace: vauban-blog
   labels:
-    app: ipfs
-    app.kubernetes.io/name: ipfs
-    app.kubernetes.io/component: storage
+    app: vauban-blog
+    component: ipfs
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
-      app: ipfs
+      app: vauban-blog
+      component: ipfs
   template:
     metadata:
       labels:
-        app: ipfs
+        app: vauban-blog
+        component: ipfs
+        environment: production
     spec:
+      priorityClassName: production
       containers:
         - name: ipfs
           image: ipfs/kubo:latest
           ports:
-            - containerPort: 8080
-              name: gateway
-            - containerPort: 5001
-              name: api
-            - containerPort: 4001
-              name: swarm
+            - name: gateway
+              containerPort: 8080
+            - name: api
+              containerPort: 5001
+            - name: swarm
+              containerPort: 4001
           env:
             - name: IPFS_PROFILE
               value: "server"
@@ -37,11 +42,11 @@ spec:
               mountPath: /data/ipfs
           resources:
             requests:
-              memory: "512Mi"
-              cpu: "200m"
+              cpu: 200m
+              memory: 512Mi
             limits:
-              memory: "2Gi"
-              cpu: "1000m"
+              cpu: "1"
+              memory: 2Gi
           livenessProbe:
             exec:
               command: ["ipfs", "id"]
@@ -58,36 +63,22 @@ spec:
             claimName: ipfs-data
 ---
 apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: ipfs-data
-  namespace: vauban
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 50Gi
-  storageClassName: local-path
----
-apiVersion: v1
 kind: Service
 metadata:
   name: ipfs
-  namespace: vauban
+  namespace: vauban-blog
   labels:
-    app: ipfs
+    app: vauban-blog
+    component: ipfs
 spec:
   type: ClusterIP
   ports:
-    - port: 8080
+    - name: gateway
+      port: 8080
       targetPort: 8080
-      name: gateway
-    - port: 5001
+    - name: api
+      port: 5001
       targetPort: 5001
-      name: api
-    - port: 4001
-      targetPort: 4001
-      name: swarm
   selector:
-    app: ipfs
+    app: vauban-blog
+    component: ipfs
