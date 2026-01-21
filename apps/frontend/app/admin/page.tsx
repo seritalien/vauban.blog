@@ -43,7 +43,7 @@ async function uploadJSONToIPFSProxy(data: unknown): Promise<string> {
   }
 
   const result = await response.json();
-  return result.Hash;
+  return result.cid;
 }
 
 // Upload to Arweave via local proxy (handles Irys/bundler integration)

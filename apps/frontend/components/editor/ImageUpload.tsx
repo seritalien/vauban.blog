@@ -48,7 +48,7 @@ export default function ImageUpload({ onUpload, className = '' }: ImageUploadPro
       }
 
       const result = await response.json();
-      const ipfsUrl = `/api/ipfs/${result.Hash}`;
+      const ipfsUrl = `/api/ipfs/${result.cid}`;
 
       onUpload(ipfsUrl);
     } catch (err) {

@@ -27,7 +27,7 @@ async function uploadJSONToIPFSProxy(data: unknown): Promise<string> {
   }
 
   const result = await response.json();
-  return result.Hash;
+  return result.cid;
 }
 
 // Content fetched from IPFS for editing

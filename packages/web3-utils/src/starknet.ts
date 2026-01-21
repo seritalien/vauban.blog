@@ -208,6 +208,9 @@ export async function getPosts(limit: number = 10, offset: number = 0): Promise<
  * Split a string into two parts for felt252 storage (31 chars each = 62 chars max)
  */
 function splitStringForFelt252(str: string): [string, string] {
+  if (!str || typeof str !== 'string') {
+    throw new Error(`Invalid string for felt252 split: ${str}`);
+  }
   const part1 = str.slice(0, 31);
   const part2 = str.slice(31, 62);
   return [part1, part2 || ''];
