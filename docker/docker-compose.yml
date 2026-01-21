@@ -67,7 +67,7 @@ services:
     container_name: vauban-ipfs
     restart: unless-stopped
     ports:
-      - "8080:8080"  # Gateway
+      - "8005:8080"  # Gateway (mapped to 8005 to avoid conflicts)
       - "5001:5001"  # API
       - "4001:4001"  # Swarm
     volumes:

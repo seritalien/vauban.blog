@@ -29,7 +29,27 @@ export const PostInputSchema = z.object({
     .min(1, 'At least one tag is required')
     .max(10, 'Maximum 10 tags allowed'),
 
-  coverImage: z.string().url().optional(),
+  coverImage: z.string()
+    .refine(
+      (val) => {
+        // Accept full URLs
+        if (val.startsWith('http://') || val.startsWith('https://')) {
+          try {
+            new URL(val);
+            return true;
+          } catch {
+            return false;
+          }
+        }
+        // Accept relative IPFS API paths
+        if (val.startsWith('/api/ipfs/')) {
+          return val.length > '/api/ipfs/'.length;
+        }
+        return false;
+      },
+      { message: 'Cover image must be a valid URL or IPFS path (e.g., /api/ipfs/Qm...)' }
+    )
+    .optional(),
 
   isPaid: z.boolean().default(false),
 

@@ -1,0 +1,107 @@
+name: Auto-Publish Articles
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'content/**/*.md'
+
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      file_path:
+        description: 'Path to markdown file (relative to repo root)'
+        required: false
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    name: Publish new articles
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          npm install -g ts-node typescript
+          npm install --save-dev @types/node
+
+      - name: Get changed files
+        id: changed-files
+        if: github.event_name == 'push'
+        run: |
+          # Get list of changed markdown files in content/
+          CHANGED=$(git diff --name-only HEAD~1 HEAD -- 'content/**/*.md' | tr '\n' ' ')
+          echo "files=$CHANGED" >> $GITHUB_OUTPUT
+          echo "Changed files: $CHANGED"
+
+      - name: Set manual file
+        if: github.event_name == 'workflow_dispatch' && inputs.file_path != ''
+        run: |
+          echo "files=${{ inputs.file_path }}" >> $GITHUB_OUTPUT
+
+      - name: Publish articles
+        env:
+          M2M_API_KEY: ${{ secrets.M2M_API_KEY }}
+          VAUBAN_API_URL: ${{ secrets.VAUBAN_API_URL || 'https://vauban.blog' }}
+        run: |
+          # Check if we have files to publish
+          FILES="${{ steps.changed-files.outputs.files }}"
+          if [ -z "$FILES" ]; then
+            echo "No markdown files to publish"
+            exit 0
+          fi
+
+          # Check if API key is configured
+          if [ -z "$M2M_API_KEY" ]; then
+            echo "Error: M2M_API_KEY secret not configured"
+            exit 1
+          fi
+
+          echo "Publishing articles to $VAUBAN_API_URL"
+          echo ""
+
+          # Process each file
+          for file in $FILES; do
+            if [ -f "$file" ]; then
+              echo "=========================================="
+              echo "Publishing: $file"
+              echo "=========================================="
+
+              # Run the publish CLI
+              npx ts-node scripts/publish-cli.ts "$file" \
+                --api-url "$VAUBAN_API_URL" \
+                --api-key "$M2M_API_KEY"
+
+              # Check result
+              if [ $? -eq 0 ]; then
+                echo "SUCCESS: $file published"
+              else
+                echo "FAILED: $file"
+                # Don't fail the whole job on individual failures
+              fi
+              echo ""
+            else
+              echo "Skipping (not found): $file"
+            fi
+          done
+
+      - name: Summary
+        run: |
+          echo "## Auto-Publish Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Files processed**: ${{ steps.changed-files.outputs.files || 'N/A' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Check the logs above for detailed results." >> $GITHUB_STEP_SUMMARY

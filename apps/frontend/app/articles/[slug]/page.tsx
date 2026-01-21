@@ -19,6 +19,7 @@ import { getProfile, formatAddress, getDisplayName, toAddressString } from '@/li
 import { type AuthorProfile } from '@vauban/shared-types';
 import TableOfContents from '@/components/article/TableOfContents';
 import RelatedArticles from '@/components/article/RelatedArticles';
+import ShareButtons from '@/components/social/ShareButtons';
 
 export default function ArticlePage({ params }: { params: Promise<{ slug: string }> }) {
   // Extract ID from params promise (Next.js 15)
@@ -116,6 +117,15 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
               {post.price} STRK
             </span>
           )}
+        </div>
+
+        {/* Share Buttons */}
+        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <ShareButtons
+            url={typeof window !== 'undefined' ? window.location.href : `https://vauban.blog/articles/${post.id}`}
+            title={post.title}
+            excerpt={post.excerpt}
+          />
         </div>
       </header>
 
@@ -220,7 +230,7 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
           <div>
             <span className="font-semibold">IPFS:</span>{' '}
             <a
-              href={`http://localhost:8080/ipfs/${post.ipfsCid}`}
+              href={`${process.env.NEXT_PUBLIC_IPFS_GATEWAY_URL || 'http://localhost:8005'}/ipfs/${post.ipfsCid}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-600 dark:text-blue-400 hover:underline"

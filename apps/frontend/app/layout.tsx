@@ -4,6 +4,7 @@ import { WalletProvider } from '@/providers/wallet-provider';
 import { ThemeProvider } from '@/providers/theme-provider';
 import { ToastProvider } from '@/components/ui/Toast';
 import Header from '@/components/layout/Header';
+import Footer from '@/components/layout/Footer';
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://vauban.blog';
 
@@ -68,9 +69,7 @@ export default function RootLayout({
                 <main className="flex-1">
                   {children}
                 </main>
-                <footer className="border-t border-gray-200 dark:border-gray-700 py-6 text-center text-sm text-gray-600 dark:text-gray-400">
-                  <p>Vauban Blog - Powered by Starknet L3 Madara Appchain</p>
-                </footer>
+                <Footer />
               </div>
             </ToastProvider>
           </WalletProvider>

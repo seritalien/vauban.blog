@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { format } from 'date-fns';
-import { usePosts, VerifiedPost } from '@/hooks/use-posts';
-import { getProfile, formatAddress, getDisplayName, toAddressString } from '@/lib/profiles';
+import { format, formatDistanceToNow } from 'date-fns';
+import { useAuthorStats, PostWithEngagement } from '@/hooks/use-author-stats';
+import { getProfile, formatAddress, getDisplayName } from '@/lib/profiles';
 import { type AuthorProfile } from '@vauban/shared-types';
 import { ArticleCardSkeleton } from '@/components/ui/Skeleton';
+import AuthorBadge, { getAuthorBadges } from '@/components/ui/AuthorBadge';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,16 +17,14 @@ export default function AuthorProfilePage() {
   const address = params.address as string;
   const [profile, setProfile] = useState<AuthorProfile | null>(null);
 
-  const { posts, isLoading, error } = usePosts(100, 0);
-
-  // Filter posts by this author
-  const authorPosts = useMemo(() => {
-    if (!address) return [];
-    const normalizedAddress = address.toLowerCase();
-    return posts.filter(
-      (post) => toAddressString(post.author) === normalizedAddress
-    );
-  }, [posts, address]);
+  const {
+    stats,
+    postsWithEngagement,
+    featuredPosts,
+    recentActivity,
+    isLoading,
+    error,
+  } = useAuthorStats(address);
 
   // Load profile
   useEffect(() => {
@@ -37,6 +36,13 @@ export default function AuthorProfilePage() {
 
   const displayName = getDisplayName(address, profile);
   const shortAddress = formatAddress(address);
+
+  // Get author badges
+  const badges = getAuthorBadges(
+    stats?.totalPosts ?? 0,
+    profile !== null,
+    stats?.memberSince ?? undefined
+  );
 
   if (isLoading) {
     return (
@@ -50,6 +56,16 @@ export default function AuthorProfilePage() {
               <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/4 mb-4" />
               <div className="h-16 bg-gray-200 dark:bg-gray-700 rounded w-2/3" />
             </div>
+          </div>
+
+          {/* Stats skeleton */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-12">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 animate-pulse">
+                <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mb-2" />
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4" />
+              </div>
+            ))}
           </div>
 
           {/* Articles skeleton */}
@@ -77,22 +93,33 @@ export default function AuthorProfilePage() {
     <div className="container mx-auto px-4 py-12">
       <div className="max-w-4xl mx-auto">
         {/* Profile Header */}
-        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 mb-12">
+        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 mb-8">
           {/* Avatar */}
           {profile?.avatar ? (
             <img
               src={profile.avatar}
               alt={displayName}
-              className="w-24 h-24 rounded-full object-cover"
+              className="w-24 h-24 rounded-full object-cover ring-4 ring-gray-100 dark:ring-gray-800"
             />
           ) : (
-            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-3xl font-bold">
+            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-3xl font-bold ring-4 ring-gray-100 dark:ring-gray-800">
               {displayName.charAt(0).toUpperCase()}
             </div>
           )}
 
           <div className="flex-1 text-center sm:text-left">
-            <h1 className="text-3xl font-bold mb-1">{displayName}</h1>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+              <h1 className="text-3xl font-bold">{displayName}</h1>
+              {/* Author Badges */}
+              {badges.length > 0 && (
+                <div className="flex flex-wrap gap-1 justify-center sm:justify-start">
+                  {badges.map((badgeType) => (
+                    <AuthorBadge key={badgeType} type={badgeType} size="sm" />
+                  ))}
+                </div>
+              )}
+            </div>
+
             <p className="text-gray-500 dark:text-gray-400 font-mono text-sm mb-4">
               {shortAddress}
             </p>
@@ -146,27 +173,94 @@ export default function AuthorProfilePage() {
               )}
             </div>
           </div>
-
-          {/* Stats */}
-          <div className="flex gap-6 sm:flex-col sm:gap-2 text-center">
-            <div>
-              <div className="text-2xl font-bold">{authorPosts.length}</div>
-              <div className="text-sm text-gray-500 dark:text-gray-400">Articles</div>
-            </div>
-          </div>
         </div>
 
-        {/* Articles */}
-        <div className="border-t border-gray-200 dark:border-gray-700 pt-8">
-          <h2 className="text-2xl font-bold mb-6">Articles</h2>
+        {/* Statistics Section */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-12">
+          <StatCard
+            icon={
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            }
+            value={stats?.totalPosts ?? 0}
+            label="Articles"
+          />
+          <StatCard
+            icon={
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              </svg>
+            }
+            value={stats?.totalLikes ?? 0}
+            label="Likes Received"
+            highlight
+          />
+          <StatCard
+            icon={
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+            }
+            value={stats?.totalComments ?? 0}
+            label="Comments"
+          />
+          <StatCard
+            icon={
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            }
+            value={stats?.memberSince ? format(stats.memberSince, 'MMM yyyy') : '-'}
+            label="Member Since"
+          />
+        </div>
 
-          {authorPosts.length === 0 ? (
+        {/* Featured Posts Section */}
+        {featuredPosts.length > 0 && (
+          <div className="mb-12">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold">Featured Posts</h2>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                Most liked articles
+              </span>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {featuredPosts.map((post) => (
+                <FeaturedPostCard key={post.id} post={post} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Publication Activity */}
+        {recentActivity.length > 0 && (
+          <div className="mb-12">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold">Recent Activity</h2>
+              <span className="text-sm text-blue-600 dark:text-blue-400 font-medium">
+                {stats?.publicationFrequency}
+              </span>
+            </div>
+            <div className="space-y-4">
+              {recentActivity.map((post) => (
+                <ActivityItem key={post.id} post={post} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* All Articles */}
+        <div className="border-t border-gray-200 dark:border-gray-700 pt-8">
+          <h2 className="text-2xl font-bold mb-6">All Articles</h2>
+
+          {postsWithEngagement.length === 0 ? (
             <div className="text-center py-12 text-gray-500 dark:text-gray-400">
               <p>This author hasn&apos;t published any articles yet.</p>
             </div>
           ) : (
             <div className="grid gap-6 sm:grid-cols-2">
-              {authorPosts.map((post) => (
+              {postsWithEngagement.map((post) => (
                 <ArticleCard key={post.id} post={post} />
               ))}
             </div>
@@ -177,7 +271,116 @@ export default function AuthorProfilePage() {
   );
 }
 
-function ArticleCard({ post }: { post: VerifiedPost }) {
+// Stat Card Component
+interface StatCardProps {
+  icon: React.ReactNode;
+  value: string | number;
+  label: string;
+  highlight?: boolean;
+}
+
+function StatCard({ icon, value, label, highlight = false }: StatCardProps) {
+  return (
+    <div
+      className={`
+        rounded-xl p-4 text-center transition-all
+        ${highlight
+          ? 'bg-gradient-to-br from-red-50 to-pink-50 dark:from-red-900/20 dark:to-pink-900/20 border border-red-100 dark:border-red-800/30'
+          : 'bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700'
+        }
+      `}
+    >
+      <div className={`flex justify-center mb-2 ${highlight ? 'text-red-500' : 'text-gray-400'}`}>
+        {icon}
+      </div>
+      <div className="text-2xl font-bold mb-1">{value}</div>
+      <div className="text-xs text-gray-500 dark:text-gray-400">{label}</div>
+    </div>
+  );
+}
+
+// Featured Post Card Component
+function FeaturedPostCard({ post }: { post: PostWithEngagement }) {
+  return (
+    <Link
+      href={`/articles/${post.id}`}
+      className="block group bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden hover:shadow-lg dark:hover:shadow-gray-800/50 transition-all"
+    >
+      {post.coverImage && (
+        <div className="relative h-32 overflow-hidden">
+          <img
+            src={post.coverImage}
+            alt={post.title}
+            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+        </div>
+      )}
+      <div className="p-4">
+        <h3 className="font-bold text-sm mb-2 line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+          {post.title}
+        </h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mb-3">
+          {post.excerpt}
+        </p>
+        <div className="flex items-center gap-3 text-xs">
+          <span className="flex items-center gap-1 text-red-500">
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+            </svg>
+            {post.likeCount}
+          </span>
+          <span className="flex items-center gap-1 text-gray-400">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            {post.commentCount}
+          </span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+// Activity Item Component
+function ActivityItem({ post }: { post: PostWithEngagement }) {
+  return (
+    <div className="flex items-start gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-700">
+      <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+        </svg>
+      </div>
+      <div className="flex-1 min-w-0">
+        <Link
+          href={`/articles/${post.id}`}
+          className="font-medium hover:text-blue-600 dark:hover:text-blue-400 transition-colors line-clamp-1"
+        >
+          {post.title}
+        </Link>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          Published {post.createdAt ? formatDistanceToNow(post.createdAt, { addSuffix: true }) : 'recently'}
+        </p>
+      </div>
+      <div className="flex items-center gap-3 text-xs text-gray-400">
+        <span className="flex items-center gap-1">
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+          </svg>
+          {post.likeCount}
+        </span>
+        <span className="flex items-center gap-1">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+          {post.commentCount}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// Article Card Component (for All Articles section)
+function ArticleCard({ post }: { post: PostWithEngagement }) {
   return (
     <article className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden hover:shadow-lg dark:hover:shadow-gray-800 transition-shadow bg-white dark:bg-gray-800">
       {post.coverImage && (
@@ -214,11 +417,19 @@ function ArticleCard({ post }: { post: VerifiedPost }) {
             {post.createdAt ? format(post.createdAt, 'MMM d, yyyy') : 'Unknown date'}
           </time>
 
-          {post.isPaid && (
-            <span className="px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 rounded text-xs">
-              {post.price} STRK
+          <div className="flex items-center gap-3">
+            {post.isPaid && (
+              <span className="px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 rounded text-xs">
+                {post.price} STRK
+              </span>
+            )}
+            <span className="flex items-center gap-1">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              </svg>
+              {post.likeCount}
             </span>
-          )}
+          </div>
         </div>
       </div>
     </article>

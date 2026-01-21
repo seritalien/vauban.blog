@@ -5,7 +5,7 @@ import { usePosts } from '@/hooks/use-posts';
 import { useWallet } from '@/providers/wallet-provider';
 import Link from 'next/link';
 import { format, subDays, isAfter } from 'date-fns';
-import { toAddressString } from '@/lib/profiles';
+import { normalizeAddress } from '@/lib/profiles';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,9 +16,9 @@ export default function AnalyticsDashboardPage() {
   // Calculate analytics
   const analytics = useMemo(() => {
     const totalPosts = posts.length;
-    const normalizedAddress = address ? address.toLowerCase() : '';
+    const normalizedUserAddress = address ? normalizeAddress(address) : '';
     const myPosts = address
-      ? posts.filter((p) => toAddressString(p.author) === normalizedAddress)
+      ? posts.filter((p) => normalizeAddress(p.author) === normalizedUserAddress)
       : [];
     const myPostsCount = myPosts.length;
 

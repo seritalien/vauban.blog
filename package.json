@@ -9,21 +9,29 @@
   ],
   "scripts": {
     "dev": "turbo run dev",
+    "dev:all": "bash scripts/dev.sh",
+    "dev:services": "cd docker && docker-compose up -d && bash ../scripts/check-services.sh",
+    "dev:frontend": "turbo run dev --filter=frontend",
     "build": "turbo run build",
     "test": "turbo run test",
     "lint": "turbo run lint",
     "clean": "turbo run clean && rm -rf node_modules .turbo",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "check-services": "bash scripts/check-services.sh",
     "contracts:build": "cd contracts && scarb build",
     "contracts:test": "cd contracts && snforge test",
     "contracts:deploy": "bash contracts/scripts/deploy.sh",
     "docker:up": "cd docker && docker-compose up -d",
     "docker:down": "cd docker && docker-compose down",
-    "docker:logs": "cd docker && docker-compose logs -f"
+    "docker:logs": "cd docker && docker-compose logs -f",
+    "publish:article": "tsx scripts/publish-content.ts",
+    "publish:batch": "tsx scripts/publish-content.ts --batch",
+    "publish:blog": "tsx scripts/publish-content.ts content/blog/"
   },
   "devDependencies": {
     "@types/node": "^20.11.5",
     "prettier": "^3.2.4",
+    "tsx": "^4.7.0",
     "turbo": "^1.12.0",
     "typescript": "^5.3.3"
   },

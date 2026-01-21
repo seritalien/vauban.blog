@@ -81,7 +81,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         webWalletUrl: 'https://web.argent.xyz',
         argentMobileOptions: {
           dappName: 'Vauban Blog',
-          url: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
+          url: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3005',
         },
       });
 

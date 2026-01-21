@@ -1,0 +1,62 @@
+{
+  "version": "1.0",
+  "updatedAt": "2026-01-21T16:27:27.184Z",
+  "articles": {
+    "own-your-words-forever": {
+      "file": "01-own-your-words-forever.md",
+      "txHash": "0x3a864ddfe513cb8b77dc6c75896beca6265e4109042a8198612d22f305e436a",
+      "ipfsCid": "QmdWi5AzBmMo8JWungeGGKHPMRwMx4j9geNJt2oHwHZcT7",
+      "arweaveTxId": "ar_1769012709882_304o4eci",
+      "contentHash": "0x3678631df8ce8c431ea4462f3fc71248c9551c149055008d93cbc709456d98",
+      "publishedAt": "2026-01-21T16:25:20.170Z"
+    },
+    "the-200-year-library": {
+      "file": "02-the-200-year-library.md",
+      "txHash": "0x656bd8e47ce70cdd5f8429cd21e70d50f4b744bf2c4a7dadb2f07106ad8b161",
+      "ipfsCid": "QmPmMGeHgyLzgpNxNiksDoFaz9kHNz1Wt35cmiEHeVezYw",
+      "arweaveTxId": "ar_1769012774869_l2ic796f",
+      "contentHash": "0x7a1a5e1c772bab3bae5188f98ec2f9866553f15bff72f9584a735e98db0c96",
+      "publishedAt": "2026-01-21T16:26:25.207Z"
+    },
+    "under-the-hood": {
+      "file": "03-under-the-hood.md",
+      "txHash": "0x15521177de41f38248ee466c2485c297ceb0bb8367e30b7d14f28ddb2aa62b9",
+      "ipfsCid": "QmYhsg4xC1EPF9A3ixDLddYckMxMQskKWhJBxqQLbNVBPZ",
+      "arweaveTxId": "ar_1769012787425_myt8lrgt",
+      "contentHash": "0x85b2c46af1c20915d33388488a7289e1a6bb8a83f55e73361725f575137c8e",
+      "publishedAt": "2026-01-21T16:26:37.606Z"
+    },
+    "the-85-percent-promise": {
+      "file": "04-the-85-percent-promise.md",
+      "txHash": "0x26ede000c74860a55c701d17fca8aac97f935a831b395b5ed7895b8d7f5faae",
+      "ipfsCid": "QmS59sWRo8yoEgA9d1UYPcyMkTr7v34CMLvsoEfkohPcPU",
+      "arweaveTxId": "ar_1769012799841_0vb6t0gn",
+      "contentHash": "0xd2e400f86dd402984fa59e358ebe9959917b683b78759d2b39851386a56039",
+      "publishedAt": "2026-01-21T16:26:50.025Z"
+    },
+    "web3-without-the-friction": {
+      "file": "05-web3-without-the-friction.md",
+      "txHash": "0x3bb2395c489af3569df58e7613021f807e48155129f26fe4eeea86de9fa7ea6",
+      "ipfsCid": "QmYrM1YXPSyMgEe1zAprno8xTdBwWdprw8dqHMuPdW6t1x",
+      "arweaveTxId": "ar_1769012812228_l6b7byx8",
+      "contentHash": "0xa06ee57e2d1f9ba33f843c5aa751a0ebbf8c82da87f8f0c6d61d65170300fc",
+      "publishedAt": "2026-01-21T16:27:02.389Z"
+    },
+    "the-trust-ladder": {
+      "file": "06-the-trust-ladder.md",
+      "txHash": "0x1a022a348713bd19b31dad0cf0bb9d2a3ef5bc9ff9113f1e8e302ff83dfbb58",
+      "ipfsCid": "QmdUVndH41oWnDdQ4kHQy2Nb6L9CWbP1pzWyzSdyoFg4Za",
+      "arweaveTxId": "ar_1769012824618_cctf5ohq",
+      "contentHash": "0xfcea7d7cbed32ae696119f051b61c8adf5e1aa3505d71a1fb638af8f961130",
+      "publishedAt": "2026-01-21T16:27:14.794Z"
+    },
+    "getting-started": {
+      "file": "07-getting-started.md",
+      "txHash": "0x1594129caebc1b0aa63237d48aecb684e09461ef31fb94eb7e80082728aebcb",
+      "ipfsCid": "QmZt1uRQVBeLrsjEndkTNLnbYF2ERaPEY3R3ikacB6PfAt",
+      "arweaveTxId": "ar_1769012836998_hy2tc8k5",
+      "contentHash": "0x892ba1e1a371c83f59c0593bce689960571cc05ad26ce5d8a8b9e24dafb716",
+      "publishedAt": "2026-01-21T16:27:27.184Z"
+    }
+  }
+}

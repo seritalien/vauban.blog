@@ -1,11 +1,28 @@
 {
-  "network": "http://localhost:9944",
-  "deployed_at": "2026-01-20T20:35:26.032Z",
+  "network": "madara-devnet",
+  "chainId": "0x4d41444152415f4445564e4554",
+  "deployedAt": "2026-01-21T19:45:50.173Z",
   "deployer": "0x3bb306a004034dba19e6cf7b161e7a4fef64bc1078419e8ad1876192f0b8cd1",
   "contracts": {
-    "BlogRegistry": "0x38fd795cdf87f7531a752096e381e86fdb4e4b94ac187febb001b5256bc2cb3",
-    "Social": "0x54d06978da188b0ee5e1ec6eb4fad3b2a9a41bfd0b3772a32a449a98dbe39ff",
-    "Paymaster": "0x1f086993216d757c7a12d7956abd24a44e271ea802227a7a46e5dd212a33df8",
-    "SessionKeyManager": "0x3887985461113c097ed9f96e7688eff2dc9a30d744f03e057538eae6366ea81"
+    "Treasury": {
+      "classHash": "0x350b17daab70ca1564268f3bf62cfcfc55f8cd6f8df21ae36d38e1483d61743",
+      "address": "0x1944f5af48af7b9c64344da7bdcd28c6cc5ac7bef6be6c9a7b20de84a2e3ec5"
+    },
+    "BlogRegistry": {
+      "classHash": "0xda988a7b90f747445fe81a9d3ea92d565c8f192c9fde974ed092f67ed6f0ea",
+      "address": "0x2d5ab5d03ae8c65b352af32eae7ca146ce0c8b6329f84a0cc15a037bb6a5a44"
+    },
+    "Social": {
+      "classHash": "0xe39837dd7881b33ecf668f6d1c941a02c0f63e7e1406669aafd7eaa7b3c0",
+      "address": "0x23c2f8bef67523a6a086f46a6d6691d06d928eaa3e1c7749fd32f4200285dfb"
+    },
+    "RoleRegistry": {
+      "classHash": "0x13726a3e3cc57bd8d3f7f0cd3ac15c0c3aca78d0b0cf0cb247a68fa707c2a99",
+      "address": "0x3a864c75941e678c2a685a2efcd89bc68c7951546ccfdb44504b5f0a6f48ced"
+    },
+    "Reputation": {
+      "classHash": "0x76aee2a61a83f5145f0d413402f40af3ee8e8c6c8f9f276b81d5855309c7bc6",
+      "address": "0xef558283180a5c0f3b8daf79edd5592136404d0a8af7a058615428d8da887e"
+    }
   }
 }

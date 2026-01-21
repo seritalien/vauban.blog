@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { usePosts, VerifiedPost } from '@/hooks/use-posts';
+import { formatAddress, toAddressString } from '@/lib/profiles';
 
 interface RelatedArticlesProps {
   currentPostId: string;
@@ -82,6 +83,16 @@ function RelatedArticleCard({ post, matchingTags }: { post: VerifiedPost; matchi
         <p className="text-gray-600 dark:text-gray-400 text-sm line-clamp-2 mb-3">
           {post.excerpt}
         </p>
+
+        {/* Author link */}
+        {post.author && (
+          <Link
+            href={`/authors/${toAddressString(post.author)}`}
+            className="text-xs text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors font-mono mb-2 block"
+          >
+            by {formatAddress(post.author)}
+          </Link>
+        )}
 
         <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
           <time dateTime={post.createdAt?.toISOString()}>

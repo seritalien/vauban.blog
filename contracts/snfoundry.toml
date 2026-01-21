@@ -8,3 +8,9 @@ exit_first = true
 [snforge.output]
 # Show detailed output for each test
 detailed = true
+
+# sncast configuration for Madara devnet
+[sncast.madara]
+url = "http://localhost:9944"
+account = "dev1"
+accounts_file = "accounts/sncast_accounts.json"

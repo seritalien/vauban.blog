@@ -1,53 +1,78 @@
 // SPDX-License-Identifier: MIT
 // Vauban Blog - BlogRegistry Smart Contract (Production-Grade)
 // Security: Reentrancy guards, Access control, Input validation, Pausable, Rate limiting
+// Features: Content workflow (draft/review/publish), Featured posts, Role-based permissions
+
+use starknet::ContractAddress;
+
+// ============================================================================
+// POST STATUS CONSTANTS
+// ============================================================================
+
+pub const POST_DRAFT: u8 = 0;           // Not submitted, only author can see
+pub const POST_PENDING_REVIEW: u8 = 1;  // Submitted for editor review
+pub const POST_PUBLISHED: u8 = 2;       // Live and visible to all
+pub const POST_REJECTED: u8 = 3;        // Rejected by editor, needs revision
+pub const POST_ARCHIVED: u8 = 4;        // Hidden but not deleted
+
+// ============================================================================
+// STORAGE STRUCTURES (Module-level for interface access)
+// ============================================================================
+
+#[derive(Drop, Serde, starknet::Store, Clone)]
+pub struct PostMetadata {
+    pub id: u64,
+    pub author: ContractAddress,
+    // Storage IDs split into two felt252s (31 chars each = 62 chars total)
+    pub arweave_tx_id_1: felt252,
+    pub arweave_tx_id_2: felt252,
+    pub ipfs_cid_1: felt252,
+    pub ipfs_cid_2: felt252,
+    pub content_hash: felt252,
+    pub price: u256,
+    pub is_encrypted: bool,
+    pub created_at: u64,
+    pub updated_at: u64,
+    pub is_deleted: bool,  // Soft delete flag
+    pub current_version: u64,  // Current version number (starts at 1)
+    // Content workflow fields
+    pub status: u8,  // POST_DRAFT, POST_PENDING_REVIEW, POST_PUBLISHED, POST_REJECTED, POST_ARCHIVED
+    pub reviewer: ContractAddress,  // Who reviewed (approved/rejected) this post
+    pub reviewed_at: u64,  // When the review decision was made
+    // Featured post fields
+    pub featured: bool,
+    pub featured_at: u64,
+    pub featured_by: ContractAddress,
+}
+
+#[derive(Drop, Serde, starknet::Store, Clone)]
+pub struct PostVersion {
+    pub version: u64,
+    pub arweave_tx_id_1: felt252,
+    pub arweave_tx_id_2: felt252,
+    pub ipfs_cid_1: felt252,
+    pub ipfs_cid_2: felt252,
+    pub content_hash: felt252,
+    pub created_at: u64,  // When this version was created
+    pub editor: ContractAddress,  // Who made this edit
+}
 
 #[starknet::contract]
 mod BlogRegistry {
     use starknet::{ContractAddress, get_caller_address, get_block_timestamp};
     use starknet::storage::{Map, StoragePathEntry, StoragePointerReadAccess, StoragePointerWriteAccess};
     use core::num::traits::Zero;
-
-    // ============================================================================
-    // STORAGE STRUCTURES
-    // ============================================================================
-
-    #[derive(Drop, Serde, starknet::Store)]
-    pub struct PostMetadata {
-        pub id: u64,
-        pub author: ContractAddress,
-        // Storage IDs split into two felt252s (31 chars each = 62 chars total)
-        pub arweave_tx_id_1: felt252,
-        pub arweave_tx_id_2: felt252,
-        pub ipfs_cid_1: felt252,
-        pub ipfs_cid_2: felt252,
-        pub content_hash: felt252,
-        pub price: u256,
-        pub is_encrypted: bool,
-        pub created_at: u64,
-        pub updated_at: u64,
-        pub is_deleted: bool,  // Soft delete flag
-        pub current_version: u64,  // Current version number (starts at 1)
-    }
-
-    // Version history entry - stores previous versions of a post
-    #[derive(Drop, Serde, starknet::Store)]
-    pub struct PostVersion {
-        pub version: u64,
-        pub arweave_tx_id_1: felt252,
-        pub arweave_tx_id_2: felt252,
-        pub ipfs_cid_1: felt252,
-        pub ipfs_cid_2: felt252,
-        pub content_hash: felt252,
-        pub created_at: u64,  // When this version was created
-        pub editor: ContractAddress,  // Who made this edit
-    }
+    use super::{
+        PostMetadata, PostVersion,
+        POST_DRAFT, POST_PENDING_REVIEW, POST_PUBLISHED, POST_REJECTED, POST_ARCHIVED
+    };
 
     #[storage]
     struct Storage {
         // Access Control
         owner: ContractAddress,
         admins: Map<ContractAddress, bool>,
+        editors: Map<ContractAddress, bool>,  // NEW: Can approve/reject posts
 
         // Core Data
         posts: Map<u64, PostMetadata>,
@@ -56,6 +81,16 @@ mod BlogRegistry {
 
         // Version History: (post_id, version_number) -> PostVersion
         post_versions: Map<(u64, u64), PostVersion>,
+
+        // Content Workflow Tracking
+        posts_by_status: Map<(u8, u64), u64>,  // (status, index) -> post_id
+        posts_by_status_count: Map<u8, u64>,   // status -> count
+        pending_review_count: u64,              // Quick access to pending count
+        featured_posts: Map<u64, u64>,          // index -> post_id (ordered by featured_at)
+        featured_count: u64,
+
+        // Role Registry (optional integration)
+        role_registry: ContractAddress,
 
         // Security
         paused: bool,
@@ -85,15 +120,28 @@ mod BlogRegistry {
         PostVersionCreated: PostVersionCreated,
         PostDeleted: PostDeleted,
         PostPurchased: PostPurchased,
+        // Content workflow events
+        PostCreatedAsDraft: PostCreatedAsDraft,
+        PostSubmittedForReview: PostSubmittedForReview,
+        PostApproved: PostApproved,
+        PostRejected: PostRejected,
+        PostArchived: PostArchived,
+        PostUnarchived: PostUnarchived,
+        PostFeatured: PostFeatured,
+        PostUnfeatured: PostUnfeatured,
+        // Admin events
         OwnershipTransferred: OwnershipTransferred,
         AdminAdded: AdminAdded,
         AdminRemoved: AdminRemoved,
+        EditorAdded: EditorAdded,
+        EditorRemoved: EditorRemoved,
         Paused: Paused,
         Unpaused: Unpaused,
         TreasuryUpdated: TreasuryUpdated,
         PlatformFeeUpdated: PlatformFeeUpdated,
         UserWhitelisted: UserWhitelisted,
         UserBlacklisted: UserBlacklisted,
+        RoleRegistryUpdated: RoleRegistryUpdated,
     }
 
     #[derive(Drop, Serde, starknet::Event)]
@@ -211,6 +259,95 @@ mod BlogRegistry {
         user: ContractAddress,
     }
 
+    // Content workflow events
+    #[derive(Drop, Serde, starknet::Event)]
+    struct PostCreatedAsDraft {
+        #[key]
+        post_id: u64,
+        #[key]
+        author: ContractAddress,
+        timestamp: u64,
+    }
+
+    #[derive(Drop, Serde, starknet::Event)]
+    struct PostSubmittedForReview {
+        #[key]
+        post_id: u64,
+        #[key]
+        author: ContractAddress,
+        timestamp: u64,
+    }
+
+    #[derive(Drop, Serde, starknet::Event)]
+    struct PostApproved {
+        #[key]
+        post_id: u64,
+        #[key]
+        reviewer: ContractAddress,
+        timestamp: u64,
+    }
+
+    #[derive(Drop, Serde, starknet::Event)]
+    struct PostRejected {
+        #[key]
+        post_id: u64,
+        #[key]
+        reviewer: ContractAddress,
+        timestamp: u64,
+    }
+
+    #[derive(Drop, Serde, starknet::Event)]
+    struct PostArchived {
+        #[key]
+        post_id: u64,
+        archived_by: ContractAddress,
+        timestamp: u64,
+    }
+
+    #[derive(Drop, Serde, starknet::Event)]
+    struct PostUnarchived {
+        #[key]
+        post_id: u64,
+        unarchived_by: ContractAddress,
+        timestamp: u64,
+    }
+
+    #[derive(Drop, Serde, starknet::Event)]
+    struct PostFeatured {
+        #[key]
+        post_id: u64,
+        featured_by: ContractAddress,
+        timestamp: u64,
+    }
+
+    #[derive(Drop, Serde, starknet::Event)]
+    struct PostUnfeatured {
+        #[key]
+        post_id: u64,
+        unfeatured_by: ContractAddress,
+        timestamp: u64,
+    }
+
+    #[derive(Drop, Serde, starknet::Event)]
+    struct EditorAdded {
+        #[key]
+        editor: ContractAddress,
+    }
+
+    #[derive(Drop, Serde, starknet::Event)]
+    struct EditorRemoved {
+        #[key]
+        editor: ContractAddress,
+    }
+
+    #[derive(Drop, Serde, starknet::Event)]
+    struct RoleRegistryUpdated {
+        #[key]
+        old_registry: ContractAddress,
+        #[key]
+        new_registry: ContractAddress,
+    }
+
     // ============================================================================
     // CONSTANTS
     // ============================================================================
@@ -265,6 +402,25 @@ mod BlogRegistry {
             assert(is_owner || is_admin, 'Caller is not admin');
         }
 
+        fn assert_only_editor_or_admin(self: @ContractState) {
+            let caller = get_caller_address();
+            let is_owner = caller == self.owner.read();
+            let is_admin = self.admins.entry(caller).read();
+            let is_editor = self.editors.entry(caller).read();
+            assert(is_owner || is_admin || is_editor, 'Caller is not editor');
+        }
+
+        fn is_editor_or_above(self: @ContractState, account: ContractAddress) -> bool {
+            account == self.owner.read()
+                || self.admins.entry(account).read()
+                || self.editors.entry(account).read()
+        }
+
+        fn can_publish_immediately(self: @ContractState, account: ContractAddress) -> bool {
+            // Editors and admins can publish immediately
+            self.is_editor_or_above(account)
+        }
+
         fn assert_not_paused(self: @ContractState) {
             assert(!self.paused.read(), 'Contract is paused');
         }
@@ -313,6 +469,23 @@ mod BlogRegistry {
             let fee_percentage = self.platform_fee_percentage.read();
             (amount * fee_percentage) / 10000 // Basis points calculation
         }
+
+        fn add_to_status_index(ref self: ContractState, status: u8, post_id: u64) {
+            let index = self.posts_by_status_count.entry(status).read();
+            self.posts_by_status.entry((status, index)).write(post_id);
+            self.posts_by_status_count.entry(status).write(index + 1);
+
+            if status == POST_PENDING_REVIEW {
+                self.pending_review_count.write(self.pending_review_count.read() + 1);
+            }
+        }
+
+        fn decrement_pending_count(ref self: ContractState) {
+            let current = self.pending_review_count.read();
+            if current > 0 {
+                self.pending_review_count.write(current - 1);
+            }
+        }
     }
 
     // ============================================================================
@@ -325,6 +498,7 @@ mod BlogRegistry {
         // ADMIN FUNCTIONS
         // ========================================================================
 
+        /// Create a new post - editors/admins publish immediately, others create drafts
         fn publish_post(
             ref self: ContractState,
             arweave_tx_id_1: felt252,
@@ -335,12 +509,11 @@ mod BlogRegistry {
             price: u256,
             is_encrypted: bool,
         ) -> u64 {
-            // Security checks
-            self.assert_only_admin();
             self.assert_not_paused();
             self.assert_no_reentrancy();
 
             let caller = get_caller_address();
+            let can_publish = self.can_publish_immediately(caller);
 
             // Rate limiting (anti-spam)
             self.check_publish_cooldown(caller);
@@ -348,10 +521,12 @@ mod BlogRegistry {
             // Input validation
             self.validate_post_inputs(arweave_tx_id_1, ipfs_cid_1, content_hash, price);
 
-            // Checks-Effects-Interactions pattern: Effects
             let post_id = self.post_count.read() + 1;
             let now = get_block_timestamp();
             let initial_version: u64 = 1;
+
+            // Determine initial status based on caller's permissions
+            let initial_status = if can_publish { POST_PUBLISHED } else { POST_DRAFT };
 
             let post = PostMetadata {
                 id: post_id,
@@ -367,6 +542,14 @@ mod BlogRegistry {
                 updated_at: now,
                 is_deleted: false,
                 current_version: initial_version,
+                // Content workflow fields
+                status: initial_status,
+                reviewer: Zero::zero(),
+                reviewed_at: 0,
+                // Featured fields
+                featured: false,
+                featured_at: 0,
+                featured_by: Zero::zero(),
             };
 
             // Store initial version in history
@@ -386,17 +569,28 @@ mod BlogRegistry {
             self.post_count.write(post_id);
             self.last_publish_time.entry(caller).write(now);
 
-            // Events (audit trail)
-            self.emit(PostPublished {
-                post_id,
-                author: caller,
-                arweave_tx_id_1,
-                arweave_tx_id_2,
-                ipfs_cid_1,
-                ipfs_cid_2,
-                price,
-                created_at: now,
-            });
+            // Track by status
+            self.add_to_status_index(initial_status, post_id);
+
+            // Emit appropriate events based on status
+            if initial_status == POST_PUBLISHED {
+                self.emit(PostPublished {
+                    post_id,
+                    author: caller,
+                    arweave_tx_id_1,
+                    arweave_tx_id_2,
+                    ipfs_cid_1,
+                    ipfs_cid_2,
+                    price,
+                    created_at: now,
+                });
+            } else {
+                self.emit(PostCreatedAsDraft {
+                    post_id,
+                    author: caller,
+                    timestamp: now,
+                });
+            }
 
             self.emit(PostVersionCreated {
                 post_id,
@@ -412,6 +606,279 @@ mod BlogRegistry {
 
             self.clear_reentrancy();
             post_id
+        }
+
+        // ========================================================================
+        // CONTENT WORKFLOW FUNCTIONS
+        // ========================================================================
+
+        /// Submit a draft post for editor review
+        fn submit_for_review(ref self: ContractState, post_id: u64) {
+            self.assert_not_paused();
+
+            let caller = get_caller_address();
+            let mut post = self.posts.entry(post_id).read();
+
+            assert(post.id != 0, 'Post does not exist');
+            assert(post.author == caller, 'Not post author');
+            assert(post.status == POST_DRAFT || post.status == POST_REJECTED, 'Invalid status');
+            assert(!post.is_deleted, 'Post is deleted');
+
+            let now = get_block_timestamp();
+            post.status = POST_PENDING_REVIEW;
+            post.updated_at = now;
+            self.posts.entry(post_id).write(post);
+
+            self.add_to_status_index(POST_PENDING_REVIEW, post_id);
+
+            self.emit(PostSubmittedForReview {
+                post_id,
+                author: caller,
+                timestamp: now,
+            });
+        }
+
+        /// Editor approves a post for publication
+        fn approve_post(ref self: ContractState, post_id: u64) {
+            self.assert_not_paused();
+            self.assert_only_editor_or_admin();
+
+            let caller = get_caller_address();
+            let mut post = self.posts.entry(post_id).read();
+
+            assert(post.id != 0, 'Post does not exist');
+            assert(post.status == POST_PENDING_REVIEW, 'Not pending review');
+            assert(!post.is_deleted, 'Post is deleted');
+
+            let now = get_block_timestamp();
+            post.status = POST_PUBLISHED;
+            post.reviewer = caller;
+            post.reviewed_at = now;
+            post.updated_at = now;
+            self.posts.entry(post_id).write(post.clone());
+
+            self.decrement_pending_count();
+            self.add_to_status_index(POST_PUBLISHED, post_id);
+
+            self.emit(PostApproved {
+                post_id,
+                reviewer: caller,
+                timestamp: now,
+            });
+
+            self.emit(PostPublished {
+                post_id,
+                author: post.author,
+                arweave_tx_id_1: post.arweave_tx_id_1,
+                arweave_tx_id_2: post.arweave_tx_id_2,
+                ipfs_cid_1: post.ipfs_cid_1,
+                ipfs_cid_2: post.ipfs_cid_2,
+                price: post.price,
+                created_at: now,
+            });
+        }
+
+        /// Editor rejects a post
+        fn reject_post(ref self: ContractState, post_id: u64) {
+            self.assert_not_paused();
+            self.assert_only_editor_or_admin();
+
+            let caller = get_caller_address();
+            let mut post = self.posts.entry(post_id).read();
+
+            assert(post.id != 0, 'Post does not exist');
+            assert(post.status == POST_PENDING_REVIEW, 'Not pending review');
+
+            let now = get_block_timestamp();
+            post.status = POST_REJECTED;
+            post.reviewer = caller;
+            post.reviewed_at = now;
+            post.updated_at = now;
+            self.posts.entry(post_id).write(post);
+
+            self.decrement_pending_count();
+            self.add_to_status_index(POST_REJECTED, post_id);
+
+            self.emit(PostRejected {
+                post_id,
+                reviewer: caller,
+                timestamp: now,
+            });
+        }
+
+        /// Archive a published post (hide without deleting)
+        fn archive_post(ref self: ContractState, post_id: u64) {
+            self.assert_not_paused();
+            self.assert_only_editor_or_admin();
+
+            let caller = get_caller_address();
+            let mut post = self.posts.entry(post_id).read();
+
+            assert(post.id != 0, 'Post does not exist');
+            assert(post.status == POST_PUBLISHED, 'Not published');
+
+            let now = get_block_timestamp();
+            post.status = POST_ARCHIVED;
+            post.updated_at = now;
+            self.posts.entry(post_id).write(post);
+
+            self.add_to_status_index(POST_ARCHIVED, post_id);
+
+            self.emit(PostArchived {
+                post_id,
+                archived_by: caller,
+                timestamp: now,
+            });
+        }
+
+        /// Unarchive an archived post back to published
+        fn unarchive_post(ref self: ContractState, post_id: u64) {
+            self.assert_not_paused();
+            self.assert_only_editor_or_admin();
+
+            let caller = get_caller_address();
+            let mut post = self.posts.entry(post_id).read();
+
+            assert(post.id != 0, 'Post does not exist');
+            assert(post.status == POST_ARCHIVED, 'Not archived');
+
+            let now = get_block_timestamp();
+            post.status = POST_PUBLISHED;
+            post.updated_at = now;
+            self.posts.entry(post_id).write(post);
+
+            self.add_to_status_index(POST_PUBLISHED, post_id);
+
+            self.emit(PostUnarchived {
+                post_id,
+                unarchived_by: caller,
+                timestamp: now,
+            });
+        }
+
+        // ========================================================================
+        // FEATURED POSTS
+        // ========================================================================
+
+        /// Feature a published post
+        fn feature_post(ref self: ContractState, post_id: u64) {
+            self.assert_not_paused();
+            self.assert_only_editor_or_admin();
+
+            let caller = get_caller_address();
+            let mut post = self.posts.entry(post_id).read();
+
+            assert(post.id != 0, 'Post does not exist');
+            assert(post.status == POST_PUBLISHED, 'Not published');
+            assert(!post.featured, 'Already featured');
+
+            let now = get_block_timestamp();
+            post.featured = true;
+            post.featured_at = now;
+            post.featured_by = caller;
+            self.posts.entry(post_id).write(post);
+
+            // Add to featured list
+            let idx = self.featured_count.read();
+            self.featured_posts.entry(idx).write(post_id);
+            self.featured_count.write(idx + 1);
+
+            self.emit(PostFeatured {
+                post_id,
+                featured_by: caller,
+                timestamp: now,
+            });
+        }
+
+        /// Remove featured status from a post
+        fn unfeature_post(ref self: ContractState, post_id: u64) {
+            self.assert_not_paused();
+            self.assert_only_editor_or_admin();
+
+            let caller = get_caller_address();
+            let mut post = self.posts.entry(post_id).read();
+
+            assert(post.id != 0, 'Post does not exist');
+            assert(post.featured, 'Not featured');
+
+            let now = get_block_timestamp();
+            post.featured = false;
+            post.featured_at = 0;
+            post.featured_by = Zero::zero();
+            self.posts.entry(post_id).write(post);
+
+            self.emit(PostUnfeatured {
+                post_id,
+                unfeatured_by: caller,
+                timestamp: now,
+            });
+        }
+
+        /// Get featured posts
+        fn get_featured_posts(self: @ContractState, limit: u64) -> Array<PostMetadata> {
+            let mut result = ArrayTrait::new();
+            let total = self.featured_count.read();
+            let actual_limit = if limit > total { total } else { limit };
+
+            let mut i: u64 = 0;
+            loop {
+                if i >= actual_limit {
+                    break;
+                }
+                let post_id = self.featured_posts.entry(total - 1 - i).read();
+                if post_id > 0 {
+                    let post = self.posts.entry(post_id).read();
+                    if post.featured && post.status == POST_PUBLISHED && !post.is_deleted {
+                        result.append(post);
+                    }
+                }
+                i += 1;
+            };
+
+            result
+        }
+
+        /// Get pending review count
+        fn get_pending_review_count(self: @ContractState) -> u64 {
+            self.pending_review_count.read()
+        }
+
+        /// Get posts by status with pagination
+        fn get_posts_by_status(
+            self: @ContractState,
+            status: u8,
+            limit: u64,
+            offset: u64
+        ) -> Array<PostMetadata> {
+            assert(status <= POST_ARCHIVED, 'Invalid status');
+            assert(limit > 0 && limit <= MAX_POSTS_PER_QUERY, 'Invalid limit');
+
+            let mut result = ArrayTrait::new();
+            let total = self.posts_by_status_count.entry(status).read();
+
+            if offset >= total {
+                return result;
+            }
+
+            let end = if offset + limit > total { total } else { offset + limit };
+            let mut i = offset;
+
+            loop {
+                if i >= end {
+                    break;
+                }
+                let post_id = self.posts_by_status.entry((status, i)).read();
+                if post_id > 0 {
+                    let post = self.posts.entry(post_id).read();
+                    // Only return if status still matches (might have changed)
+                    if post.status == status && !post.is_deleted {
+                        result.append(post);
+                    }
+                }
+                i += 1;
+            };
+
+            result
         }
 
         fn update_post(
@@ -731,6 +1198,49 @@ mod BlogRegistry {
         }
 
         // ========================================================================
+        // EDITOR MANAGEMENT
+        // ========================================================================
+
+        fn add_editor(ref self: ContractState, editor: ContractAddress) {
+            self.assert_only_admin();
+            assert(editor.is_non_zero(), 'Invalid editor address');
+            assert(!self.editors.entry(editor).read(), 'Already editor');
+
+            self.editors.entry(editor).write(true);
+            self.emit(EditorAdded { editor });
+        }
+
+        fn remove_editor(ref self: ContractState, editor: ContractAddress) {
+            self.assert_only_admin();
+            assert(self.editors.entry(editor).read(), 'Not an editor');
+
+            self.editors.entry(editor).write(false);
+            self.emit(EditorRemoved { editor });
+        }
+
+        fn is_editor(self: @ContractState, account: ContractAddress) -> bool {
+            self.is_editor_or_above(account)
+        }
+
+        // ========================================================================
+        // ROLE REGISTRY INTEGRATION
+        // ========================================================================
+
+        fn set_role_registry(ref self: ContractState, registry: ContractAddress) {
+            self.assert_only_owner();
+            let old = self.role_registry.read();
+            self.role_registry.write(registry);
+            self.emit(RoleRegistryUpdated {
+                old_registry: old,
+                new_registry: registry,
+            });
+        }
+
+        fn get_role_registry(self: @ContractState) -> ContractAddress {
+            self.role_registry.read()
+        }
+
+        // ========================================================================
         // ACCESS CONTROL (WHITELIST)
         // ========================================================================
 
@@ -859,11 +1369,9 @@ mod BlogRegistry {
 // INTERFACE DEFINITION
 // ============================================================================
 
-use starknet::ContractAddress;
-
 #[starknet::interface]
-trait IBlogRegistry<TContractState> {
-    // Admin functions
+pub trait IBlogRegistry<TContractState> {
+    // Post creation and management
     fn publish_post(
         ref self: TContractState,
         arweave_tx_id_1: felt252,
@@ -885,24 +1393,47 @@ trait IBlogRegistry<TContractState> {
     ) -> bool;
     fn delete_post(ref self: TContractState, post_id: u64) -> bool;
 
+    // Content workflow
+    fn submit_for_review(ref self: TContractState, post_id: u64);
+    fn approve_post(ref self: TContractState, post_id: u64);
+    fn reject_post(ref self: TContractState, post_id: u64);
+    fn archive_post(ref self: TContractState, post_id: u64);
+    fn unarchive_post(ref self: TContractState, post_id: u64);
+
+    // Featured posts
+    fn feature_post(ref self: TContractState, post_id: u64);
+    fn unfeature_post(ref self: TContractState, post_id: u64);
+    fn get_featured_posts(self: @TContractState, limit: u64) -> Array<PostMetadata>;
+    fn get_pending_review_count(self: @TContractState) -> u64;
+    fn get_posts_by_status(self: @TContractState, status: u8, limit: u64, offset: u64) -> Array<PostMetadata>;
+
     // User functions
     fn purchase_post(ref self: TContractState, post_id: u64) -> bool;
 
     // Public view functions
-    fn get_post(self: @TContractState, post_id: u64) -> BlogRegistry::PostMetadata;
+    fn get_post(self: @TContractState, post_id: u64) -> PostMetadata;
     fn get_post_count(self: @TContractState) -> u64;
-    fn get_posts(self: @TContractState, limit: u64, offset: u64) -> Array<BlogRegistry::PostMetadata>;
+    fn get_posts(self: @TContractState, limit: u64, offset: u64) -> Array<PostMetadata>;
     fn has_access(self: @TContractState, post_id: u64, user: ContractAddress) -> bool;
 
     // Version history
-    fn get_post_version(self: @TContractState, post_id: u64, version: u64) -> BlogRegistry::PostVersion;
+    fn get_post_version(self: @TContractState, post_id: u64, version: u64) -> PostVersion;
     fn get_post_version_count(self: @TContractState, post_id: u64) -> u64;
-    fn get_post_versions(self: @TContractState, post_id: u64, limit: u64, offset: u64) -> Array<BlogRegistry::PostVersion>;
+    fn get_post_versions(self: @TContractState, post_id: u64, limit: u64, offset: u64) -> Array<PostVersion>;
 
     // Admin management
     fn add_admin(ref self: TContractState, admin: ContractAddress);
     fn remove_admin(ref self: TContractState, admin: ContractAddress);
     fn is_admin(self: @TContractState, account: ContractAddress) -> bool;
+
+    // Editor management
+    fn add_editor(ref self: TContractState, editor: ContractAddress);
+    fn remove_editor(ref self: TContractState, editor: ContractAddress);
+    fn is_editor(self: @TContractState, account: ContractAddress) -> bool;
+
+    // Role registry integration
+    fn set_role_registry(ref self: TContractState, registry: ContractAddress);
+    fn get_role_registry(self: @TContractState) -> ContractAddress;
 
     // Access control
     fn whitelist_user(ref self: TContractState, post_id: u64, user: ContractAddress);

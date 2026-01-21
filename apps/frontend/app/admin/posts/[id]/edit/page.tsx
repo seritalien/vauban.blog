@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from 'react';
 import { useWallet } from '@/providers/wallet-provider';
-import { PostInputSchema } from '@vauban/shared-types';
+import { PostInputSchema, PostMetadata } from '@vauban/shared-types';
 import {
   getPost,
   updatePost,
@@ -30,13 +30,23 @@ async function uploadJSONToIPFSProxy(data: unknown): Promise<string> {
   return result.Hash;
 }
 
+// Content fetched from IPFS for editing
+interface PostContent {
+  title?: string;
+  slug?: string;
+  content?: string;
+  excerpt?: string;
+  tags?: string[];
+  coverImage?: string;
+}
+
 // Fetch content from IPFS
-async function fetchFromIPFS(cid: string): Promise<any> {
+async function fetchFromIPFS(cid: string): Promise<PostContent> {
   const response = await fetch(`/api/ipfs/${cid}`);
   if (!response.ok) {
     throw new Error(`IPFS fetch failed: ${response.status}`);
   }
-  return response.json();
+  return response.json() as Promise<PostContent>;
 }
 
 export default function EditPostPage({ params }: { params: Promise<{ id: string }> }) {
@@ -56,7 +66,7 @@ export default function EditPostPage({ params }: { params: Promise<{ id: string 
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<string>('');
-  const [originalPost, setOriginalPost] = useState<any>(null);
+  const [originalPost, setOriginalPost] = useState<PostMetadata | null>(null);
 
   // Load existing post data
   useEffect(() => {
@@ -257,10 +267,11 @@ export default function EditPostPage({ params }: { params: Promise<{ id: string 
           <div>
             <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Cover Image URL</label>
             <input
-              type="url"
+              type="text"
               value={formData.coverImage}
               onChange={(e) => setFormData({ ...formData, coverImage: e.target.value })}
               className="w-full border border-gray-300 dark:border-gray-600 rounded px-4 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              placeholder="https://... or /api/ipfs/..."
             />
           </div>
 

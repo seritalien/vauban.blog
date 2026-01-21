@@ -140,7 +140,7 @@ export async function uploadBufferToIPFS(buffer: Buffer | Uint8Array): Promise<s
  * Fetch content from IPFS as JSON
  */
 export async function fetchJSONFromIPFS<T = any>(cid: string): Promise<T> {
-  const gatewayUrl = process.env.NEXT_PUBLIC_IPFS_GATEWAY_URL || 'http://localhost:8080';
+  const gatewayUrl = process.env.NEXT_PUBLIC_IPFS_GATEWAY_URL || 'http://localhost:8005';
   const url = `${gatewayUrl}/ipfs/${cid}`;
 
   try {
@@ -168,7 +168,7 @@ export async function fetchJSONFromIPFS<T = any>(cid: string): Promise<T> {
  * Fetch content from IPFS as text
  */
 export async function fetchTextFromIPFS(cid: string): Promise<string> {
-  const gatewayUrl = process.env.NEXT_PUBLIC_IPFS_GATEWAY_URL || 'http://localhost:8080';
+  const gatewayUrl = process.env.NEXT_PUBLIC_IPFS_GATEWAY_URL || 'http://localhost:8005';
   const url = `${gatewayUrl}/ipfs/${cid}`;
 
   try {
@@ -192,7 +192,7 @@ export async function fetchTextFromIPFS(cid: string): Promise<string> {
  * Fetch content from IPFS as blob
  */
 export async function fetchBlobFromIPFS(cid: string): Promise<Blob> {
-  const gatewayUrl = process.env.NEXT_PUBLIC_IPFS_GATEWAY_URL || 'http://localhost:8080';
+  const gatewayUrl = process.env.NEXT_PUBLIC_IPFS_GATEWAY_URL || 'http://localhost:8005';
   const url = `${gatewayUrl}/ipfs/${cid}`;
 
   try {
@@ -272,7 +272,7 @@ export async function listPinnedContent(): Promise<string[]> {
  * Get IPFS gateway URL for a CID
  */
 export function getIPFSGatewayUrl(cid: string): string {
-  const gatewayUrl = process.env.NEXT_PUBLIC_IPFS_GATEWAY_URL || 'http://localhost:8080';
+  const gatewayUrl = process.env.NEXT_PUBLIC_IPFS_GATEWAY_URL || 'http://localhost:8005';
   return `${gatewayUrl}/ipfs/${cid}`;
 }
 

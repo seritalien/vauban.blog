@@ -51,3 +51,36 @@ export {
   type ProfileInput,
   type AuthorInfo,
 } from './profile';
+
+// Role and permission schemas and types
+export {
+  // Constants
+  ROLES,
+  ROLE_NAMES,
+  ROLE_LABELS,
+  ROLE_DESCRIPTIONS,
+  REPUTATION_POINTS,
+  REPUTATION_LEVELS,
+  BADGES,
+  // Types
+  type RoleLevel,
+  type RoleName,
+  type UserRole,
+  type RoleChangeRequest,
+  type Permissions,
+  type UserReputation,
+  type BadgeName,
+  // Schemas
+  RoleLevelSchema,
+  UserRoleSchema,
+  RoleChangeRequestSchema,
+  PermissionsSchema,
+  UserReputationSchema,
+  // Utility functions
+  getPermissionsForRole,
+  canPerformAction,
+  getMinimumRoleForPermission,
+  hasBadge,
+  getUserBadges,
+  getReputationLevel,
+} from './role';

@@ -28,6 +28,12 @@ export default function Header() {
             >
               Articles
             </Link>
+            <Link
+              href="/authors"
+              className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+            >
+              Authors
+            </Link>
             {isConnected && (
               <>
                 <Link
@@ -160,6 +166,13 @@ export default function Header() {
                 className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
               >
                 Articles
+              </Link>
+              <Link
+                href="/authors"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+              >
+                Authors
               </Link>
               {isConnected && (
                 <>

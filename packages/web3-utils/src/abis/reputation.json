@@ -1,0 +1,753 @@
+{
+  "abi": [
+    {
+      "type": "impl",
+      "name": "ReputationImpl",
+      "interface_name": "vauban_blog::reputation::IReputation"
+    },
+    {
+      "type": "struct",
+      "name": "core::integer::u256",
+      "members": [
+        {
+          "name": "low",
+          "type": "core::integer::u128"
+        },
+        {
+          "name": "high",
+          "type": "core::integer::u128"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "core::bool",
+      "variants": [
+        {
+          "name": "False",
+          "type": "()"
+        },
+        {
+          "name": "True",
+          "type": "()"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "vauban_blog::reputation::UserReputation",
+      "members": [
+        {
+          "name": "user",
+          "type": "core::starknet::contract_address::ContractAddress"
+        },
+        {
+          "name": "total_points",
+          "type": "core::integer::u64"
+        },
+        {
+          "name": "level",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "badges",
+          "type": "core::integer::u256"
+        },
+        {
+          "name": "joined_at",
+          "type": "core::integer::u64"
+        },
+        {
+          "name": "post_count",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "comment_count",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "likes_received",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "subscribers",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "featured_count",
+          "type": "core::integer::u32"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "vauban_blog::reputation::ReputationAction",
+      "members": [
+        {
+          "name": "id",
+          "type": "core::integer::u64"
+        },
+        {
+          "name": "user",
+          "type": "core::starknet::contract_address::ContractAddress"
+        },
+        {
+          "name": "action_type",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "points",
+          "type": "core::integer::u64"
+        },
+        {
+          "name": "is_penalty",
+          "type": "core::bool"
+        },
+        {
+          "name": "timestamp",
+          "type": "core::integer::u64"
+        }
+      ]
+    },
+    {
+      "type": "interface",
+      "name": "vauban_blog::reputation::IReputation",
+      "items": [
+        {
+          "type": "function",
+          "name": "register_user",
+          "inputs": [
+            {
+              "name": "user",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "award_post_published",
+          "inputs": [
+            {
+              "name": "user",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "award_post_featured",
+          "inputs": [
+            {
+              "name": "user",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "award_comment",
+          "inputs": [
+            {
+              "name": "user",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "award_like_received",
+          "inputs": [
+            {
+              "name": "user",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "award_subscriber_gained",
+          "inputs": [
+            {
+              "name": "user",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "apply_spam_penalty",
+          "inputs": [
+            {
+              "name": "user",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "award_badge",
+          "inputs": [
+            {
+              "name": "user",
+              "type": "core::starknet::contract_address::ContractAddress"
+            },
+            {
+              "name": "badge",
+              "type": "core::integer::u256"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "revoke_badge",
+          "inputs": [
+            {
+              "name": "user",
+              "type": "core::starknet::contract_address::ContractAddress"
+            },
+            {
+              "name": "badge",
+              "type": "core::integer::u256"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "has_badge",
+          "inputs": [
+            {
+              "name": "user",
+              "type": "core::starknet::contract_address::ContractAddress"
+            },
+            {
+              "name": "badge",
+              "type": "core::integer::u256"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "core::bool"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_reputation",
+          "inputs": [
+            {
+              "name": "user",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "vauban_blog::reputation::UserReputation"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_level",
+          "inputs": [
+            {
+              "name": "user",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "core::integer::u8"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_points",
+          "inputs": [
+            {
+              "name": "user",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "core::integer::u64"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_badges",
+          "inputs": [
+            {
+              "name": "user",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "core::integer::u256"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_total_users",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "core::integer::u64"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_total_points_distributed",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "core::integer::u64"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_action",
+          "inputs": [
+            {
+              "name": "action_id",
+              "type": "core::integer::u64"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "vauban_blog::reputation::ReputationAction"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_action_count",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "core::integer::u64"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "authorize_contract",
+          "inputs": [
+            {
+              "name": "contract_address",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "deauthorize_contract",
+          "inputs": [
+            {
+              "name": "contract_address",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "is_authorized",
+          "inputs": [
+            {
+              "name": "contract_address",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "core::bool"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "add_admin",
+          "inputs": [
+            {
+              "name": "admin",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "remove_admin",
+          "inputs": [
+            {
+              "name": "admin",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "is_admin",
+          "inputs": [
+            {
+              "name": "account",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "core::bool"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "set_early_adopter_window",
+          "inputs": [
+            {
+              "name": "window_seconds",
+              "type": "core::integer::u64"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "pause",
+          "inputs": [],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "unpause",
+          "inputs": [],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "is_paused",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "core::bool"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_owner",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "transfer_ownership",
+          "inputs": [
+            {
+              "name": "new_owner",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        }
+      ]
+    },
+    {
+      "type": "constructor",
+      "name": "constructor",
+      "inputs": [
+        {
+          "name": "owner",
+          "type": "core::starknet::contract_address::ContractAddress"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::reputation::Reputation::PointsAwarded",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "user",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "key"
+        },
+        {
+          "name": "points",
+          "type": "core::integer::u64",
+          "kind": "data"
+        },
+        {
+          "name": "action_type",
+          "type": "core::integer::u8",
+          "kind": "data"
+        },
+        {
+          "name": "new_total",
+          "type": "core::integer::u64",
+          "kind": "data"
+        },
+        {
+          "name": "timestamp",
+          "type": "core::integer::u64",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::reputation::Reputation::PointsDeducted",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "user",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "key"
+        },
+        {
+          "name": "points",
+          "type": "core::integer::u64",
+          "kind": "data"
+        },
+        {
+          "name": "reason",
+          "type": "core::felt252",
+          "kind": "data"
+        },
+        {
+          "name": "new_total",
+          "type": "core::integer::u64",
+          "kind": "data"
+        },
+        {
+          "name": "timestamp",
+          "type": "core::integer::u64",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::reputation::Reputation::BadgeEarned",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "user",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "key"
+        },
+        {
+          "name": "badge",
+          "type": "core::integer::u256",
+          "kind": "data"
+        },
+        {
+          "name": "timestamp",
+          "type": "core::integer::u64",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::reputation::Reputation::LevelUp",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "user",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "key"
+        },
+        {
+          "name": "old_level",
+          "type": "core::integer::u8",
+          "kind": "data"
+        },
+        {
+          "name": "new_level",
+          "type": "core::integer::u8",
+          "kind": "data"
+        },
+        {
+          "name": "timestamp",
+          "type": "core::integer::u64",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::reputation::Reputation::UserRegistered",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "user",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "key"
+        },
+        {
+          "name": "timestamp",
+          "type": "core::integer::u64",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::reputation::Reputation::ContractAuthorized",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "contract_address",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "key"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::reputation::Reputation::Paused",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "timestamp",
+          "type": "core::integer::u64",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::reputation::Reputation::Unpaused",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "timestamp",
+          "type": "core::integer::u64",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::reputation::Reputation::OwnershipTransferred",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "previous_owner",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "key"
+        },
+        {
+          "name": "new_owner",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "key"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::reputation::Reputation::Event",
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "PointsAwarded",
+          "type": "vauban_blog::reputation::Reputation::PointsAwarded",
+          "kind": "nested"
+        },
+        {
+          "name": "PointsDeducted",
+          "type": "vauban_blog::reputation::Reputation::PointsDeducted",
+          "kind": "nested"
+        },
+        {
+          "name": "BadgeEarned",
+          "type": "vauban_blog::reputation::Reputation::BadgeEarned",
+          "kind": "nested"
+        },
+        {
+          "name": "LevelUp",
+          "type": "vauban_blog::reputation::Reputation::LevelUp",
+          "kind": "nested"
+        },
+        {
+          "name": "UserRegistered",
+          "type": "vauban_blog::reputation::Reputation::UserRegistered",
+          "kind": "nested"
+        },
+        {
+          "name": "ContractAuthorized",
+          "type": "vauban_blog::reputation::Reputation::ContractAuthorized",
+          "kind": "nested"
+        },
+        {
+          "name": "Paused",
+          "type": "vauban_blog::reputation::Reputation::Paused",
+          "kind": "nested"
+        },
+        {
+          "name": "Unpaused",
+          "type": "vauban_blog::reputation::Reputation::Unpaused",
+          "kind": "nested"
+        },
+        {
+          "name": "OwnershipTransferred",
+          "type": "vauban_blog::reputation::Reputation::OwnershipTransferred",
+          "kind": "nested"
+        }
+      ]
+    }
+  ]
+}

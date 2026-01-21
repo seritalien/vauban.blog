@@ -11,8 +11,19 @@ import {
   publishPost,
 } from '@vauban/web3-utils';
 import { useRouter, useSearchParams } from 'next/navigation';
-import ImageUpload, { InlineImageUpload } from '@/components/editor/ImageUpload';
-import { getDraft, saveDraft, deleteDraft, scheduleAutoSave, cancelAutoSave } from '@/lib/drafts';
+import ImageUpload from '@/components/editor/ImageUpload';
+import MarkdownEditor from '@/components/editor/MarkdownEditor';
+import TagInput from '@/components/editor/TagInput';
+import SaveStatusIndicator from '@/components/editor/SaveStatusIndicator';
+import DraftRecoveryModal from '@/components/editor/DraftRecoveryModal';
+import {
+  getDraft,
+  saveDraft,
+  deleteDraft,
+  releaseDraftLock,
+  type Draft,
+} from '@/lib/drafts';
+import { useDraftAutosave } from '@/hooks/useDraftAutosave';
 import Link from 'next/link';
 import { format } from 'date-fns';
 
@@ -62,7 +73,7 @@ function AdminPageInner() {
     slug: '',
     content: '',
     excerpt: '',
-    tags: '',
+    tags: [] as string[],
     coverImage: '',
     isPaid: false,
     price: 0,
@@ -70,12 +81,49 @@ function AdminPageInner() {
   });
 
   const [draftId, setDraftId] = useState<string | null>(null);
-  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [scheduledAt, setScheduledAt] = useState<string>('');
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishStatus, setPublishStatus] = useState<string>('');
   const [arweaveStatus, setArweaveStatus] = useState<'checking' | 'connected' | 'unavailable'>('checking');
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+
+  // Prepare form data for autosave hook (convert tags array to string)
+  const draftFormData = {
+    title: formData.title,
+    slug: formData.slug,
+    content: formData.content,
+    excerpt: formData.excerpt,
+    tags: formData.tags.join(', '),
+    coverImage: formData.coverImage,
+    isPaid: formData.isPaid,
+    price: formData.price,
+    scheduledAt: scheduledAt || undefined,
+  };
+
+  // Use the autosave hook with versioning and conflict detection
+  const {
+    saveStatus,
+    lastSavedAt,
+    hasSnapshots,
+    snapshotCount,
+    conflict,
+    dismissConflict,
+  } = useDraftAutosave({
+    draftId,
+    formData: draftFormData,
+    onDraftIdChange: (id) => {
+      setDraftId(id);
+      window.history.replaceState(null, '', `/admin?draft=${id}`);
+    },
+    onConflictDetected: () => {
+      setShowRecoveryModal(true);
+    },
+    onRemoteUpdate: (draft) => {
+      // Optionally update form with remote changes (for now, just show conflict)
+      console.log('Remote update detected:', draft.updatedAt);
+    },
+  });
 
   // Generate slug from title
   const generateSlug = (title: string): string => {
@@ -117,7 +165,8 @@ function AdminPageInner() {
           slug: draft.slug,
           content: draft.content,
           excerpt: draft.excerpt,
-          tags: draft.tags,
+          // Convert comma-separated string from draft to array
+          tags: draft.tags ? draft.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
           coverImage: draft.coverImage,
           isPaid: draft.isPaid,
           price: draft.price,
@@ -142,35 +191,36 @@ function AdminPageInner() {
       .catch(() => setArweaveStatus('unavailable'));
   }, []);
 
-  // Auto-save draft when form changes
-  const triggerAutoSave = useCallback(() => {
-    if (!formData.title && !formData.content) return; // Don't save empty drafts
-
-    setAutoSaveStatus('saving');
-    scheduleAutoSave(
-      {
-        ...formData,
-        id: draftId || undefined,
-        scheduledAt: scheduledAt || undefined,
-      },
-      (saved) => {
-        setDraftId(saved.id);
-        setAutoSaveStatus('saved');
-        // Update URL with draft ID without navigation
-        if (!draftId) {
-          window.history.replaceState(null, '', `/admin?draft=${saved.id}`);
-        }
-        // Reset status after 2s
-        setTimeout(() => setAutoSaveStatus('idle'), 2000);
-      }
-    );
-  }, [formData, draftId, scheduledAt]);
-
-  // Trigger auto-save when form data changes
+  // Cleanup on unmount - release lock
   useEffect(() => {
-    triggerAutoSave();
-    return () => cancelAutoSave();
-  }, [formData, scheduledAt, triggerAutoSave]);
+    return () => {
+      if (draftId) {
+        releaseDraftLock(draftId);
+      }
+    };
+  }, [draftId]);
+
+  const handleRestoreFromBackup = useCallback((restoredDraft: Draft) => {
+    setFormData({
+      title: restoredDraft.title,
+      slug: restoredDraft.slug,
+      content: restoredDraft.content,
+      excerpt: restoredDraft.excerpt,
+      tags: restoredDraft.tags ? restoredDraft.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+      coverImage: restoredDraft.coverImage,
+      isPaid: restoredDraft.isPaid,
+      price: restoredDraft.price,
+      isEncrypted: false,
+    });
+    if (restoredDraft.scheduledAt) {
+      setScheduledAt(restoredDraft.scheduledAt.slice(0, 16));
+    }
+    if (restoredDraft.slug) {
+      setSlugManuallyEdited(true);
+    }
+    // Dismiss any conflict
+    dismissConflict();
+  }, [dismissConflict]);
 
   if (!isConnected) {
     return (
@@ -195,7 +245,8 @@ function AdminPageInner() {
       // Parse and validate with Zod
       const postData = PostInputSchema.parse({
         ...formData,
-        tags: formData.tags.split(',').map(t => t.trim()).filter(Boolean),
+        // Tags are already an array from TagInput
+        tags: formData.tags,
         // Only include coverImage if it's a non-empty URL
         coverImage: formData.coverImage?.trim() || undefined,
       });
@@ -257,23 +308,28 @@ function AdminPageInner() {
 
     const saved = saveDraft({
       ...formData,
+      // Convert tags array back to comma-separated string for draft storage
+      tags: formData.tags.join(', '),
       id: draftId || undefined,
       scheduledAt: scheduledAt || undefined,
     });
     setDraftId(saved.id);
-    setAutoSaveStatus('saved');
     window.history.replaceState(null, '', `/admin?draft=${saved.id}`);
-    setTimeout(() => setAutoSaveStatus('idle'), 2000);
   };
 
   const handleNewDraft = () => {
+    // Release lock on current draft
+    if (draftId) {
+      releaseDraftLock(draftId);
+    }
+
     setDraftId(null);
     setFormData({
       title: '',
       slug: '',
       content: '',
       excerpt: '',
-      tags: '',
+      tags: [],
       coverImage: '',
       isPaid: false,
       price: 0,
@@ -291,35 +347,26 @@ function AdminPageInner() {
     }
   };
 
+  const handleViewSnapshots = () => {
+    setShowRecoveryModal(true);
+  };
+
   return (
     <div className="container mx-auto px-4 py-12">
       <div className="max-w-4xl mx-auto">
-        {/* Header with drafts link and auto-save indicator */}
+        {/* Header with drafts link and save status indicator */}
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-4xl font-bold">
             {draftId ? 'Edit Draft' : 'New Article'}
           </h1>
           <div className="flex items-center gap-4">
-            {/* Auto-save status */}
-            <span className="text-sm text-gray-500 dark:text-gray-400">
-              {autoSaveStatus === 'saving' && (
-                <span className="flex items-center gap-1">
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Saving...
-                </span>
-              )}
-              {autoSaveStatus === 'saved' && (
-                <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  Saved
-                </span>
-              )}
-            </span>
+            {/* Save status indicator with backup history */}
+            <SaveStatusIndicator
+              status={conflict?.hasConflict ? 'conflict' : saveStatus}
+              lastSavedAt={lastSavedAt}
+              hasSnapshots={hasSnapshots}
+              onViewSnapshots={draftId ? handleViewSnapshots : undefined}
+            />
             <Link
               href="/admin/drafts"
               className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
@@ -329,14 +376,42 @@ function AdminPageInner() {
           </div>
         </div>
 
+        {/* Conflict warning banner */}
+        {conflict?.hasConflict && (
+          <div className="flex items-center gap-3 mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <svg className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-red-800 dark:text-red-200">
+                Edit conflict detected
+              </p>
+              <p className="text-xs text-red-700 dark:text-red-300">
+                This draft is being edited in another tab. Your changes may be overwritten.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowRecoveryModal(true)}
+              className="px-3 py-1.5 text-sm font-medium text-red-700 bg-red-100 hover:bg-red-200 dark:bg-red-800 dark:text-red-100 dark:hover:bg-red-700 rounded-lg transition-colors"
+            >
+              Resolve
+            </button>
+          </div>
+        )}
+
         {/* Draft actions bar */}
-        {draftId && (
+        {draftId && !conflict?.hasConflict && (
           <div className="flex items-center gap-2 mb-6 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
             <svg className="w-5 h-5 text-yellow-600 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
             <span className="text-sm text-yellow-800 dark:text-yellow-200 flex-1">
               Editing draft
+              {snapshotCount > 0 && (
+                <span className="ml-2 text-yellow-600 dark:text-yellow-400">
+                  ({snapshotCount} backup{snapshotCount !== 1 ? 's' : ''})
+                </span>
+              )}
             </span>
             <button
               type="button"
@@ -421,40 +496,22 @@ function AdminPageInner() {
           {/* Content (MDX) */}
           <div>
             <label className="block text-sm font-semibold mb-2">Content (Markdown)</label>
-            <div className="border rounded overflow-hidden">
-              {/* Editor Toolbar */}
-              <div className="flex items-center gap-1 px-2 py-1 bg-gray-50 dark:bg-gray-800 border-b">
-                <InlineImageUpload
-                  onInsert={(markdown) => {
-                    setFormData(prev => ({
-                      ...prev,
-                      content: prev.content + '\n' + markdown + '\n'
-                    }));
-                  }}
-                />
-                <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
-                  Tip: Use **bold**, *italic*, # Heading, ```code```
-                </span>
-              </div>
-              <textarea
-                value={formData.content}
-                onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                className="w-full px-4 py-2 font-mono border-0 focus:ring-0 dark:bg-gray-900"
-                rows={20}
-                required
-              />
-            </div>
+            <MarkdownEditor
+              value={formData.content}
+              onChange={(content) => setFormData({ ...formData, content })}
+              placeholder="Write your article content in Markdown..."
+              minHeight={500}
+            />
           </div>
 
           {/* Tags */}
           <div>
-            <label className="block text-sm font-semibold mb-2">Tags (comma-separated)</label>
-            <input
-              type="text"
+            <label className="block text-sm font-semibold mb-2">Tags</label>
+            <TagInput
               value={formData.tags}
-              onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-              className="w-full border rounded px-4 py-2"
-              placeholder="web3, blockchain, tutorial"
+              onChange={(tags) => setFormData({ ...formData, tags })}
+              placeholder="Add tags..."
+              maxTags={10}
             />
           </div>
 
@@ -470,11 +527,11 @@ function AdminPageInner() {
                 />
                 <div className="flex gap-2">
                   <input
-                    type="url"
+                    type="text"
                     value={formData.coverImage}
                     onChange={(e) => setFormData({ ...formData, coverImage: e.target.value })}
                     className="flex-1 border rounded px-4 py-2 text-sm"
-                    placeholder="Image URL"
+                    placeholder="Image URL or /api/ipfs/..."
                   />
                   <button
                     type="button"
@@ -590,7 +647,7 @@ function AdminPageInner() {
             </button>
             <button
               type="submit"
-              disabled={isPublishing}
+              disabled={isPublishing || conflict?.hasConflict}
               className="flex-1 py-3 bg-blue-600 text-white font-semibold rounded hover:bg-blue-700 disabled:opacity-50 transition-colors"
             >
               {isPublishing
@@ -602,6 +659,15 @@ function AdminPageInner() {
             </button>
           </div>
         </form>
+
+        {/* Draft Recovery Modal */}
+        <DraftRecoveryModal
+          draftId={draftId || ''}
+          isOpen={showRecoveryModal}
+          onClose={() => setShowRecoveryModal(false)}
+          onRestore={handleRestoreFromBackup}
+          conflict={conflict || undefined}
+        />
       </div>
     </div>
   );
