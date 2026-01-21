@@ -238,6 +238,30 @@ function AdminPageInner() {
 
     if (!account) return;
 
+    // Check if scheduled for future date
+    if (scheduledAt) {
+      const scheduledTime = new Date(scheduledAt).getTime();
+      const now = Date.now();
+
+      if (scheduledTime > now) {
+        // Save as scheduled draft instead of publishing
+        const saved = saveDraft({
+          ...formData,
+          tags: formData.tags.join(', '),
+          id: draftId || undefined,
+          scheduledAt,
+        });
+        setDraftId(saved.id);
+        window.history.replaceState(null, '', `/admin?draft=${saved.id}`);
+
+        setPublishStatus(
+          `Draft scheduled for ${format(new Date(scheduledAt), 'MMMM d, yyyy')} at ${format(new Date(scheduledAt), 'HH:mm')}. ` +
+          `Note: You must return to this page to publish at the scheduled time. Automatic publishing is not yet supported.`
+        );
+        return;
+      }
+    }
+
     try {
       setIsPublishing(true);
       setPublishStatus('Validating...');
@@ -595,10 +619,15 @@ function AdminPageInner() {
                 </button>
               )}
             </div>
-            {scheduledAt && (
-              <p className="text-sm text-blue-600 dark:text-blue-400 mt-2">
-                Article will be published on {format(new Date(scheduledAt), 'MMMM d, yyyy')} at {format(new Date(scheduledAt), 'HH:mm')}
-              </p>
+            {scheduledAt && new Date(scheduledAt) > new Date() && (
+              <div className="mt-2 space-y-1">
+                <p className="text-sm text-amber-600 dark:text-amber-400">
+                  Scheduled for {format(new Date(scheduledAt), 'MMMM d, yyyy')} at {format(new Date(scheduledAt), 'HH:mm')}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Note: Draft will be saved. You must return to publish at the scheduled time.
+                </p>
+              </div>
             )}
           </div>
 
@@ -648,12 +677,16 @@ function AdminPageInner() {
             <button
               type="submit"
               disabled={isPublishing || conflict?.hasConflict}
-              className="flex-1 py-3 bg-blue-600 text-white font-semibold rounded hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              className={`flex-1 py-3 font-semibold rounded disabled:opacity-50 transition-colors ${
+                scheduledAt && new Date(scheduledAt) > new Date()
+                  ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+              }`}
             >
               {isPublishing
                 ? 'Publishing...'
-                : scheduledAt
-                  ? `Schedule for ${format(new Date(scheduledAt), 'MMM d')}`
+                : scheduledAt && new Date(scheduledAt) > new Date()
+                  ? `Schedule for ${format(new Date(scheduledAt), 'MMM d, HH:mm')}`
                   : 'Publish Now'
               }
             </button>

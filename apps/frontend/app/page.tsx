@@ -11,7 +11,7 @@ import Pagination from '@/components/ui/Pagination';
 import HeroSection from '@/components/home/HeroSection';
 import TrustBadges from '@/components/ui/TrustBadges';
 import FeaturedArticles from '@/components/home/FeaturedArticles';
-import { formatAddress, toAddressString } from '@/lib/profiles';
+import AuthorDisplay from '@/components/ui/AuthorDisplay';
 
 // Disable static generation for this page (requires IPFS/Arweave client-side)
 export const dynamic = 'force-dynamic';
@@ -356,14 +356,16 @@ function HomeContent() {
                     {post.excerpt}
                   </p>
 
-                  {/* Author link */}
+                  {/* Author */}
                   {post.author && (
-                    <Link
-                      href={`/authors/${toAddressString(post.author)}`}
-                      className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors font-mono mb-2 block"
-                    >
-                      by {formatAddress(post.author)}
-                    </Link>
+                    <div className="mb-2">
+                      <AuthorDisplay
+                        address={post.author}
+                        size="xs"
+                        showAvatar={true}
+                        linkToProfile={true}
+                      />
+                    </div>
                   )}
 
                   <div className="flex items-center justify-between text-xs sm:text-sm text-gray-500 dark:text-gray-400">

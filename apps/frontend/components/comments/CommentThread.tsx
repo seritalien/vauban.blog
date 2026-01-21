@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, type FC } from 'react';
+import { useState, useMemo, type FC } from 'react';
 import { format } from 'date-fns';
 import type { CommentMetadata } from '@vauban/shared-types';
 import LikeButton from '@/components/social/LikeButton';
 import CommentReplyForm from './CommentReplyForm';
+import AuthorDisplay from '@/components/ui/AuthorDisplay';
+import { getProfile, getDisplayName, toAddressString } from '@/lib/profiles';
 
 // Extended comment type with resolved content and nested replies
 export interface CommentWithContent extends CommentMetadata {
@@ -42,7 +44,9 @@ const CommentThread: FC<CommentThreadProps> = ({
   const [isExpanded, setIsExpanded] = useState(depth < 2);
   const [showAllReplies, setShowAllReplies] = useState(false);
 
-  const authorStr = String(comment.author);
+  const authorAddress = toAddressString(comment.author);
+  const authorProfile = useMemo(() => getProfile(authorAddress), [authorAddress]);
+  const authorDisplayName = getDisplayName(authorAddress, authorProfile);
   const hasReplies = comment.replies && comment.replies.length > 0;
   const canReply = depth < maxDepth;
   const isReplyFormActive = activeReplyTo === comment.id;
@@ -86,9 +90,13 @@ const CommentThread: FC<CommentThreadProps> = ({
 
         {/* Comment header */}
         <div className="flex items-center gap-3 mb-2">
-          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-            {authorStr.slice(0, 8)}...{authorStr.slice(-6)}
-          </span>
+          <AuthorDisplay
+            address={authorAddress}
+            profile={authorProfile}
+            size="sm"
+            showAvatar={true}
+            linkToProfile={true}
+          />
           <time className="text-xs text-gray-500 dark:text-gray-400">
             {format(new Date(comment.createdAt * 1000), 'MMM d, yyyy HH:mm')}
           </time>
@@ -176,7 +184,7 @@ const CommentThread: FC<CommentThreadProps> = ({
             <CommentReplyForm
               postId={postId}
               parentCommentId={comment.id}
-              replyingToUsername={`${authorStr.slice(0, 8)}...${authorStr.slice(-6)}`}
+              replyingToUsername={authorDisplayName}
               onSuccess={handleReplySuccess}
               onCancel={() => onSetActiveReplyTo(null)}
             />

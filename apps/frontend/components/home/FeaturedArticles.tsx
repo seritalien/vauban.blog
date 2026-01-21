@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { VerifiedPost } from '@/hooks/use-posts';
-import { formatAddress, toAddressString } from '@/lib/profiles';
+import AuthorDisplay from '@/components/ui/AuthorDisplay';
 
 interface FeaturedArticlesProps {
   posts: VerifiedPost[];
@@ -93,14 +93,16 @@ export default function FeaturedArticles({ posts }: FeaturedArticlesProps) {
                   {post.excerpt}
                 </p>
 
-                {/* Author link */}
+                {/* Author */}
                 {post.author && (
-                  <Link
-                    href={`/authors/${toAddressString(post.author)}`}
-                    className="text-xs text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors font-mono mb-2 block"
-                  >
-                    by {formatAddress(post.author)}
-                  </Link>
+                  <div className="mb-2">
+                    <AuthorDisplay
+                      address={post.author}
+                      size="xs"
+                      showAvatar={true}
+                      linkToProfile={true}
+                    />
+                  </div>
                 )}
 
                 <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
