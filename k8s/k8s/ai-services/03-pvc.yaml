@@ -35,3 +35,20 @@ spec:
   resources:
     requests:
       storage: 5Gi
+---
+# Qdrant vector database storage
+# Stores: vector embeddings for RAG
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qdrant-storage
+  namespace: ai-services
+  labels:
+    app: qdrant
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi

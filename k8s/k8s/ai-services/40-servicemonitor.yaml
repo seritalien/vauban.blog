@@ -1,0 +1,47 @@
+# LocalAI metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: localai
+  namespace: ai-services
+  labels:
+    app: ai-services
+    component: localai
+    release: kube-prometheus-stack  # Required for Prometheus discovery
+spec:
+  selector:
+    matchLabels:
+      app: ai-services
+      component: localai
+  namespaceSelector:
+    matchNames:
+      - ai-services
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+---
+# Qdrant metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: qdrant
+  namespace: ai-services
+  labels:
+    app: ai-services
+    component: qdrant
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: ai-services
+      component: qdrant
+  namespaceSelector:
+    matchNames:
+      - ai-services
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s

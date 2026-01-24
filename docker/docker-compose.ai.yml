@@ -1,0 +1,134 @@
+# AI Services - Local Development & Testing
+# Usage:
+#   docker compose -f docker-compose.ai.yml up -d
+#   docker compose -f docker-compose.ai.yml logs -f
+#   docker compose -f docker-compose.ai.yml down
+#
+# With main services:
+#   docker compose -f docker-compose.yml -f docker-compose.ai.yml up -d
+
+services:
+  # ============================================================================
+  # LOCALAI - OpenAI-compatible LLM Server
+  # ============================================================================
+  # Lightweight models for fast responses:
+  #   - phi-3-mini (3.8B) - Best balance speed/quality, default
+  #   - qwen2-1.5b (1.5B) - Ultra fast
+  #   - tinyllama (1.1B)  - Fastest, simple tasks
+  #   - gemma-2b (2B)     - Good quality, fast
+  # ============================================================================
+  localai:
+    image: localai/localai:v2.25.0-ffmpeg
+    container_name: vauban-localai
+    restart: unless-stopped
+    ports:
+      - "8081:8080"  # Changed from 8080 to avoid conflicts
+    volumes:
+      - localai-models:/models
+      - ./ai/models:/models-config:ro
+    environment:
+      THREADS: 4
+      CONTEXT_SIZE: 4096
+      MODELS_PATH: /models
+      DEBUG: "false"
+      BUILD_TYPE: generic
+      CORS: "true"
+      CORS_ALLOW_ORIGINS: "*"
+    networks:
+      - vauban-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/readyz"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 300s
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 2G
+
+  # ============================================================================
+  # OPEN WEBUI - ChatGPT-like Interface
+  # ============================================================================
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: vauban-open-webui
+    restart: unless-stopped
+    ports:
+      - "3006:8080"  # Open WebUI on 3006 (3000 reserved, 3005 for blog)
+    volumes:
+      - open-webui-data:/app/backend/data
+    environment:
+      # Connect to LocalAI
+      OPENAI_API_BASE_URL: http://localai:8080/v1
+      OPENAI_API_KEY: not-needed
+      # Auth
+      WEBUI_AUTH: "true"
+      WEBUI_SECRET_KEY: local-dev-secret-change-in-prod
+      # RAG settings
+      RAG_EMBEDDING_MODEL: text-embedding
+      ENABLE_RAG_WEB_SEARCH: "false"
+      # Qdrant (optional, for RAG)
+      # VECTOR_DB: qdrant
+      # QDRANT_URL: http://qdrant:6333
+      # Disable telemetry
+      DO_NOT_TRACK: "true"
+      ANONYMIZED_TELEMETRY: "false"
+    networks:
+      - vauban-network
+    depends_on:
+      localai:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================================================
+  # QDRANT - Vector Database for RAG
+  # ============================================================================
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    container_name: vauban-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"  # HTTP API
+      - "6334:6334"  # gRPC
+    volumes:
+      - qdrant-data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__GRPC_PORT: 6334
+      QDRANT__TELEMETRY_DISABLED: "true"
+    networks:
+      - vauban-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:6333/readyz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# ============================================================================
+# NETWORKS
+# ============================================================================
+networks:
+  vauban-network:
+    external: true
+    name: vauban-network
+
+# ============================================================================
+# VOLUMES
+# ============================================================================
+volumes:
+  localai-models:
+    external: true
+    name: vauban-localai-models
+  open-webui-data:
+    driver: local
+    name: vauban-open-webui-data
+  qdrant-data:
+    driver: local
+    name: vauban-qdrant-data

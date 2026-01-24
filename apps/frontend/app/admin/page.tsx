@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense, useCallback } from 'react';
+import { useState, useEffect, Suspense, useCallback, useRef } from 'react';
 
 // Disable static generation for this page (requires IPFS client-side)
 export const dynamic = 'force-dynamic';
@@ -16,6 +16,8 @@ import MarkdownEditor from '@/components/editor/MarkdownEditor';
 import TagInput from '@/components/editor/TagInput';
 import SaveStatusIndicator from '@/components/editor/SaveStatusIndicator';
 import DraftRecoveryModal from '@/components/editor/DraftRecoveryModal';
+import AIAssistant from '@/components/editor/AIAssistant';
+import AISettingsPanel from '@/components/admin/AISettingsPanel';
 import {
   getDraft,
   saveDraft,
@@ -87,6 +89,13 @@ function AdminPageInner() {
   const [arweaveStatus, setArweaveStatus] = useState<'checking' | 'connected' | 'unavailable'>('checking');
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+
+  // AI Assistant state
+  const [aiSidebarExpanded, setAiSidebarExpanded] = useState(false);
+  const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
+  const [selectedText, setSelectedText] = useState('');
+  const [selectionRange, setSelectionRange] = useState<{ start: number; end: number } | null>(null);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
 
   // Prepare form data for autosave hook (convert tags array to string)
   const draftFormData = {
@@ -199,6 +208,62 @@ function AdminPageInner() {
       }
     };
   }, [draftId]);
+
+  // Track text selection in editor
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      const textarea = editorContainerRef.current?.querySelector('textarea');
+      if (textarea && document.activeElement === textarea) {
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        if (start !== end) {
+          setSelectedText(formData.content.substring(start, end));
+          setSelectionRange({ start, end });
+        } else {
+          setSelectedText('');
+          setSelectionRange(null);
+        }
+      }
+    };
+
+    document.addEventListener('selectionchange', handleSelectionChange);
+    return () => document.removeEventListener('selectionchange', handleSelectionChange);
+  }, [formData.content]);
+
+  // AI Assistant callbacks
+  const handleAIReplaceText = useCallback((newText: string) => {
+    if (selectionRange) {
+      const before = formData.content.substring(0, selectionRange.start);
+      const after = formData.content.substring(selectionRange.end);
+      setFormData({ ...formData, content: before + newText + after });
+      setSelectedText('');
+      setSelectionRange(null);
+    }
+  }, [formData, selectionRange]);
+
+  const handleAIInsertText = useCallback((newText: string) => {
+    setFormData({ ...formData, content: formData.content + '\n\n' + newText });
+  }, [formData]);
+
+  const handleAISuggestTitle = useCallback((title: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      title,
+      slug: slugManuallyEdited ? prev.slug : generateSlug(title),
+    }));
+  }, [slugManuallyEdited]);
+
+  const handleAISuggestTags = useCallback((tags: string[]) => {
+    setFormData({ ...formData, tags });
+  }, [formData]);
+
+  const handleAISuggestExcerpt = useCallback((excerpt: string) => {
+    setFormData({ ...formData, excerpt });
+  }, [formData]);
+
+  const handleAISetCoverImage = useCallback((coverImage: string) => {
+    setFormData({ ...formData, coverImage });
+  }, [formData]);
 
   const handleRestoreFromBackup = useCallback((restoredDraft: Draft) => {
     setFormData({
@@ -408,29 +473,59 @@ function AdminPageInner() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-12">
-      <div className="max-w-4xl mx-auto">
-        {/* Header with drafts link and save status indicator */}
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-4xl font-bold">
-            {draftId ? 'Edit Draft' : 'New Article'}
-          </h1>
-          <div className="flex items-center gap-4">
-            {/* Save status indicator with backup history */}
-            <SaveStatusIndicator
-              status={conflict?.hasConflict ? 'conflict' : saveStatus}
-              lastSavedAt={lastSavedAt}
-              hasSnapshots={hasSnapshots}
-              onViewSnapshots={draftId ? handleViewSnapshots : undefined}
-            />
-            <Link
-              href="/admin/drafts"
-              className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-            >
-              View Drafts
-            </Link>
-          </div>
-        </div>
+    <div className="flex min-h-screen">
+      {/* Main content area */}
+      <div className={`flex-1 transition-all duration-300 ${aiSidebarExpanded ? 'mr-80' : ''}`}>
+        <div className="container mx-auto px-4 py-12">
+          <div className="max-w-4xl mx-auto">
+            {/* Header with drafts link and save status indicator */}
+            <div className="flex items-center justify-between mb-8">
+              <h1 className="text-4xl font-bold">
+                {draftId ? 'Edit Draft' : 'New Article'}
+              </h1>
+              <div className="flex items-center gap-4">
+                {/* AI Assistant buttons */}
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setAiSidebarExpanded(!aiSidebarExpanded)}
+                    className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors ${
+                      aiSidebarExpanded
+                        ? 'bg-purple-600 text-white'
+                        : 'border border-purple-300 dark:border-purple-600 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20'
+                    }`}
+                    title="Assistant IA"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                    <span className="hidden sm:inline">AI</span>
+                  </button>
+                  <button
+                    onClick={() => setAiSettingsOpen(true)}
+                    className="p-2 text-gray-500 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
+                    title="Configuration IA"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </button>
+                </div>
+                {/* Save status indicator with backup history */}
+                <SaveStatusIndicator
+                  status={conflict?.hasConflict ? 'conflict' : saveStatus}
+                  lastSavedAt={lastSavedAt}
+                  hasSnapshots={hasSnapshots}
+                  onViewSnapshots={draftId ? handleViewSnapshots : undefined}
+                />
+                <Link
+                  href="/admin/drafts"
+                  className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                >
+                  View Drafts
+                </Link>
+              </div>
+            </div>
 
         {/* Conflict warning banner */}
         {conflict?.hasConflict && (
@@ -550,7 +645,7 @@ function AdminPageInner() {
           </div>
 
           {/* Content (MDX) */}
-          <div>
+          <div ref={editorContainerRef}>
             <label className="block text-sm font-semibold mb-2">Content (Markdown)</label>
             <MarkdownEditor
               value={formData.content}
@@ -737,6 +832,33 @@ function AdminPageInner() {
           onClose={() => setShowRecoveryModal(false)}
           onRestore={handleRestoreFromBackup}
           conflict={conflict || undefined}
+        />
+
+        {/* AI Settings Panel */}
+        <AISettingsPanel
+          isOpen={aiSettingsOpen}
+          onClose={() => setAiSettingsOpen(false)}
+        />
+          </div>
+        </div>
+      </div>
+
+      {/* AI Assistant Sidebar */}
+      <div className={`fixed right-0 top-16 h-[calc(100%-4rem)] z-30 transition-transform duration-300 ${aiSidebarExpanded ? 'translate-x-0' : 'translate-x-full'}`}>
+        <AIAssistant
+          selectedText={selectedText}
+          fullContent={formData.content}
+          title={formData.title}
+          tags={formData.tags}
+          excerpt={formData.excerpt}
+          onReplaceText={handleAIReplaceText}
+          onInsertText={handleAIInsertText}
+          onSuggestTitle={handleAISuggestTitle}
+          onSuggestTags={handleAISuggestTags}
+          onSuggestExcerpt={handleAISuggestExcerpt}
+          onSetCoverImage={handleAISetCoverImage}
+          isExpanded={aiSidebarExpanded}
+          onToggleExpanded={() => setAiSidebarExpanded(!aiSidebarExpanded)}
         />
       </div>
     </div>

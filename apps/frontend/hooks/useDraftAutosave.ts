@@ -77,10 +77,22 @@ export function useDraftAutosave({
   const lastFormDataRef = useRef<DraftFormData>(formData);
   const isMountedRef = useRef(true);
 
-  // Update ref when formData changes
+  // Refs for callbacks to avoid dependency issues
+  const onConflictDetectedRef = useRef(onConflictDetected);
+  const onRemoteUpdateRef = useRef(onRemoteUpdate);
+
+  // Update refs when props change
   useEffect(() => {
     lastFormDataRef.current = formData;
   }, [formData]);
+
+  useEffect(() => {
+    onConflictDetectedRef.current = onConflictDetected;
+  }, [onConflictDetected]);
+
+  useEffect(() => {
+    onRemoteUpdateRef.current = onRemoteUpdate;
+  }, [onRemoteUpdate]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -118,7 +130,7 @@ export function useDraftAutosave({
         remoteDraft,
       });
       setSaveStatus('conflict');
-      onConflictDetected?.({ lock: conflictResult.lock, remoteDraft });
+      onConflictDetectedRef.current?.({ lock: conflictResult.lock, remoteDraft });
     } else {
       // Acquire lock
       setDraftLock(draftId);
@@ -128,7 +140,7 @@ export function useDraftAutosave({
     // Update snapshot count
     const snapshots = getDraftSnapshots(draftId);
     setSnapshotCount(snapshots.length);
-  }, [draftId, onConflictDetected]);
+  }, [draftId]);
 
   // Refresh lock periodically to prevent staleness
   useEffect(() => {
@@ -157,7 +169,7 @@ export function useDraftAutosave({
 
       if (event.type === 'draft_updated' && event.draft) {
         // Another tab updated the draft
-        onRemoteUpdate?.(event.draft);
+        onRemoteUpdateRef.current?.(event.draft);
       } else if (event.type === 'lock_acquired' && event.lock) {
         // Another tab acquired the lock
         const conflictResult = checkDraftConflict(draftId);
@@ -169,14 +181,14 @@ export function useDraftAutosave({
             remoteDraft,
           });
           setSaveStatus('conflict');
-          onConflictDetected?.({ lock: event.lock, remoteDraft });
+          onConflictDetectedRef.current?.({ lock: event.lock, remoteDraft });
         }
       }
     };
 
     const unsubscribe = subscribeToStorageChanges(draftId, handleStorageChange);
     return unsubscribe;
-  }, [draftId, onConflictDetected, onRemoteUpdate]);
+  }, [draftId]);
 
   // Auto-save when form data changes (debounced)
   useEffect(() => {

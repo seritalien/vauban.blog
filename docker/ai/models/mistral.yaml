@@ -1,0 +1,12 @@
+name: mistral
+backend: llama-cpp
+parameters:
+  model: mistral-7b-instruct-v0.3.Q4_K_M.gguf
+  temperature: 0.7
+  top_p: 0.9
+  top_k: 40
+  context_size: 4096
+  threads: 4
+  stop:
+    - "</s>"
+    - "[INST]"

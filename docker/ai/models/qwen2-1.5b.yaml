@@ -1,0 +1,17 @@
+# Qwen2 1.5B - Alibaba's ultra-lightweight model
+# 1.5B parameters - Very fast responses
+name: qwen2-1.5b
+parameters:
+  model: huggingface://Qwen/Qwen2-1.5B-Instruct-GGUF/qwen2-1_5b-instruct-q4_k_m.gguf
+context_size: 4096
+threads: 4
+stopwords:
+  - "<|im_end|>"
+  - "<|endoftext|>"
+template:
+  chat_message: |
+    <|im_start|>{{.RoleName}}
+    {{.Content}}<|im_end|>
+  chat: |
+    {{.Input}}
+    <|im_start|>assistant

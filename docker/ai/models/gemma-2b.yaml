@@ -1,0 +1,17 @@
+# Gemma 2B - Google's lightweight model
+# 2B parameters - Fast with good quality
+name: gemma-2b
+parameters:
+  model: huggingface://google/gemma-2b-it-GGUF/gemma-2b-it-q4_k_m.gguf
+context_size: 4096
+threads: 4
+stopwords:
+  - "<end_of_turn>"
+  - "<start_of_turn>"
+template:
+  chat_message: |
+    <start_of_turn>{{.RoleName}}
+    {{.Content}}<end_of_turn>
+  chat: |
+    {{.Input}}
+    <start_of_turn>model

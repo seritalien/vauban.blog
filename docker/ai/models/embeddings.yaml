@@ -1,0 +1,6 @@
+name: text-embedding
+backend: sentencetransformers
+embeddings: true
+trust_remote_code: true
+parameters:
+  model: nomic-ai/nomic-embed-text-v1.5

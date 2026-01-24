@@ -8,11 +8,16 @@ resources:
   - 01-sealed-secrets.yaml
   - 02-configmaps.yaml
   - 03-pvc.yaml
+  # NOTE: 05-model-download-job.yaml is NOT included
+  # Run manually: kubectl apply -f 05-model-download-job.yaml
   - 10-localai-deployment.yaml
   - 11-localai-service.yaml
+  - 15-qdrant-deployment.yaml
+  - 16-qdrant-service.yaml
   - 20-open-webui-deployment.yaml
   - 21-open-webui-service.yaml
   - 30-ingress.yaml
+  - 40-servicemonitor.yaml
   - 50-network-policies.yaml
 
 images:
@@ -20,6 +25,8 @@ images:
     newTag: v2.25.0-ffmpeg
   - name: ghcr.io/open-webui/open-webui
     newTag: main
+  - name: qdrant/qdrant
+    newTag: v1.12.4
 
 commonLabels:
   app.kubernetes.io/part-of: ai-services

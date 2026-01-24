@@ -119,18 +119,78 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
-    # Allow to Qdrant (if deployed, for RAG)
+    # Allow to Qdrant (local)
     - to:
-        - namespaceSelector:
+        - podSelector:
             matchLabels:
-              kubernetes.io/metadata.name: n8n
-          podSelector:
-            matchLabels:
-              app: qdrant
+              app: ai-services
+              component: qdrant
       ports:
         - protocol: TCP
           port: 6333
     # DNS
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Qdrant network policy
+# Ingress: Open WebUI, n8n namespace
+# Egress: DNS only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: qdrant
+  namespace: ai-services
+  labels:
+    app: ai-services
+    component: qdrant
+spec:
+  podSelector:
+    matchLabels:
+      app: ai-services
+      component: qdrant
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow from Open WebUI
+    - from:
+        - podSelector:
+            matchLabels:
+              app: ai-services
+              component: open-webui
+      ports:
+        - protocol: TCP
+          port: 6333
+        - protocol: TCP
+          port: 6334
+    # Allow from n8n namespace (for RAG workflows)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: n8n
+      ports:
+        - protocol: TCP
+          port: 6333
+        - protocol: TCP
+          port: 6334
+    # Allow from Prometheus for metrics
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 6333
+  egress:
+    # DNS only
     - to:
         - namespaceSelector: {}
           podSelector:

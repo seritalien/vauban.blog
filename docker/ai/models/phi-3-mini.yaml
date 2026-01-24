@@ -1,0 +1,18 @@
+# Phi-3 Mini - Microsoft's compact but capable model
+# 3.8B parameters - Good balance of speed and quality
+name: phi-3-mini
+parameters:
+  model: huggingface://microsoft/Phi-3-mini-4k-instruct-gguf/Phi-3-mini-4k-instruct-q4.gguf
+context_size: 4096
+threads: 4
+stopwords:
+  - "<|end|>"
+  - "<|user|>"
+  - "<|assistant|>"
+template:
+  chat_message: |
+    <|{{.RoleName}}|>
+    {{.Content}}<|end|>
+  chat: |
+    {{.Input}}
+    <|assistant|>

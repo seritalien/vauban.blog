@@ -1,0 +1,142 @@
+# One-time Job to download LLM models
+# Run manually: kubectl apply -f 05-model-download-job.yaml
+# Delete after completion: kubectl delete job model-download -n ai-services
+#
+# This job downloads:
+# - Mistral 7B Instruct v0.3 Q4_K_M (~4.1GB)
+# - Nomic Embed Text v1.5 Q4_K_M (~274MB)
+# - Phi-3 Mini 4K Instruct Q4 (~2.2GB)
+#
+# Total download: ~6.5GB
+# Estimated time: 10-30 minutes depending on bandwidth
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: model-download
+  namespace: ai-services
+  labels:
+    app: ai-services
+    component: model-download
+spec:
+  ttlSecondsAfterFinished: 3600  # Auto-cleanup 1 hour after completion
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: ai-services
+        component: model-download
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: downloader
+          image: curlimages/curl:8.5.0
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              cd /models
+
+              echo "=== Starting model downloads ==="
+              echo "Target directory: /models"
+              df -h /models
+              echo ""
+
+              # Mistral 7B Instruct v0.3 (from bartowski - publicly accessible)
+              if [ ! -f "mistral-7b-instruct-v0.3.Q4_K_M.gguf" ]; then
+                echo "Downloading Mistral 7B Instruct v0.3..."
+                curl -L --progress-bar -o "mistral-7b-instruct-v0.3.Q4_K_M.gguf" \
+                  "https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf"
+                echo "Mistral downloaded successfully"
+              else
+                echo "Mistral already exists, skipping"
+              fi
+
+              # Nomic Embed Text v1.5
+              if [ ! -f "nomic-embed-text-v1.5.Q4_K_M.gguf" ]; then
+                echo "Downloading Nomic Embed Text v1.5..."
+                curl -L --progress-bar -o "nomic-embed-text-v1.5.Q4_K_M.gguf" \
+                  "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q4_K_M.gguf"
+                echo "Nomic Embed downloaded successfully"
+              else
+                echo "Nomic Embed already exists, skipping"
+              fi
+
+              # Phi-3 Mini 4K Instruct
+              if [ ! -f "phi-3-mini-4k-instruct.Q4_K_M.gguf" ]; then
+                echo "Downloading Phi-3 Mini 4K Instruct..."
+                curl -L --progress-bar -o "phi-3-mini-4k-instruct.Q4_K_M.gguf" \
+                  "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf"
+                echo "Phi-3 downloaded successfully"
+              else
+                echo "Phi-3 already exists, skipping"
+              fi
+
+              echo ""
+              echo "=== Download complete ==="
+              ls -lh /models/*.gguf
+              df -h /models
+          volumeMounts:
+            - name: models
+              mountPath: /models
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: localai-models
+---
+# NetworkPolicy to allow the download job to access external URLs
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: model-download
+  namespace: ai-services
+  labels:
+    app: ai-services
+    component: model-download
+spec:
+  podSelector:
+    matchLabels:
+      app: ai-services
+      component: model-download
+  policyTypes:
+    - Egress
+  egress:
+    # Allow HTTPS to HuggingFace
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+    # DNS
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

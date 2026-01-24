@@ -1,0 +1,87 @@
+# Qdrant Vector Database for RAG
+# High-performance vector similarity search
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qdrant
+  namespace: ai-services
+  labels:
+    app: ai-services
+    component: qdrant
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # Single replica with persistent storage
+  selector:
+    matchLabels:
+      app: ai-services
+      component: qdrant
+  template:
+    metadata:
+      labels:
+        app: ai-services
+        component: qdrant
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "6333"
+        prometheus.io/path: "/metrics"
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: qdrant
+          image: qdrant/qdrant:v1.12.4
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 6333
+            - name: grpc
+              containerPort: 6334
+          env:
+            - name: QDRANT__SERVICE__HTTP_PORT
+              value: "6333"
+            - name: QDRANT__SERVICE__GRPC_PORT
+              value: "6334"
+            - name: QDRANT__STORAGE__STORAGE_PATH
+              value: /qdrant/storage
+            - name: QDRANT__TELEMETRY_DISABLED
+              value: "true"
+          volumeMounts:
+            - name: storage
+              mountPath: /qdrant/storage
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 6333
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 6333
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: qdrant-storage
