@@ -181,6 +181,9 @@ export const AIAssistant: FC<AIAssistantProps> = (props) => {
   const [currentImageProvider, setCurrentImageProvider] = useState<string>('');
   const [currentImageModel, setCurrentImageModel] = useState<string>('');
 
+  // Last used model info (from response)
+  const [lastUsedModel, setLastUsedModel] = useState<{ provider: string; model: string; latencyMs?: number } | null>(null);
+
   // Check AI connection on mount and track config changes
   useEffect(() => {
     const updateProviderInfo = () => {
@@ -274,6 +277,13 @@ export const AIAssistant: FC<AIAssistantProps> = (props) => {
       // Track which action produced this result (for button rendering)
       setLastCompletedAction(action);
 
+      // Store model info from response
+      setLastUsedModel({
+        provider: response.provider,
+        model: response.model,
+        latencyMs: response.latencyMs,
+      });
+
       if (action === 'suggest_title') {
         const titles = parseTitleSuggestions(response.data);
         setTitleSuggestions(titles);
@@ -309,10 +319,16 @@ export const AIAssistant: FC<AIAssistantProps> = (props) => {
 
     if (!response.success) {
       setError(response.error);
+      setLastUsedModel(null);
       return;
     }
 
     setResult(response.data);
+    setLastUsedModel({
+      provider: response.provider,
+      model: response.model,
+      latencyMs: response.latencyMs,
+    });
   }, [customQuery, selectedText, fullContent]);
 
   const handleApplyResult = useCallback(() => {
@@ -712,9 +728,16 @@ export const AIAssistant: FC<AIAssistantProps> = (props) => {
         {/* Title Suggestions */}
         {titleSuggestions.length > 0 && (
           <div className="space-y-2">
-            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              Suggestions de titres
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Suggestions de titres
+              </h3>
+              {lastUsedModel && (
+                <span className="text-[10px] text-gray-400 dark:text-gray-500" title={`${lastUsedModel.provider}/${lastUsedModel.model}`}>
+                  {lastUsedModel.model.split('/').pop()?.replace(':free', '')} • {lastUsedModel.latencyMs}ms
+                </span>
+              )}
+            </div>
             {titleSuggestions.map((suggestion, index) => (
               <button
                 key={index}
@@ -733,9 +756,16 @@ export const AIAssistant: FC<AIAssistantProps> = (props) => {
         {/* Tag Suggestions */}
         {tagSuggestions.length > 0 && (
           <div className="space-y-2">
-            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              Tags suggérés
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Tags suggérés
+              </h3>
+              {lastUsedModel && (
+                <span className="text-[10px] text-gray-400 dark:text-gray-500" title={`${lastUsedModel.provider}/${lastUsedModel.model}`}>
+                  {lastUsedModel.model.split('/').pop()?.replace(':free', '')} • {lastUsedModel.latencyMs}ms
+                </span>
+              )}
+            </div>
             <div className="flex flex-wrap gap-2">
               {tagSuggestions.map((tag, index) => (
                 <button
@@ -773,9 +803,17 @@ export const AIAssistant: FC<AIAssistantProps> = (props) => {
         {/* Result */}
         {result && !titleSuggestions.length && !tagSuggestions.length && (
           <div className="space-y-2">
-            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              Résultat
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Résultat
+              </h3>
+              {/* Model info - subtle display */}
+              {lastUsedModel && (
+                <span className="text-[10px] text-gray-400 dark:text-gray-500" title={`${lastUsedModel.provider}/${lastUsedModel.model}`}>
+                  {lastUsedModel.model.split('/').pop()?.replace(':free', '')} • {lastUsedModel.latencyMs}ms
+                </span>
+              )}
+            </div>
             <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
               <div className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
                 {result}

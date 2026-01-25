@@ -2,9 +2,11 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { WalletProvider } from '@/providers/wallet-provider';
 import { ThemeProvider } from '@/providers/theme-provider';
+import { QueryProvider } from '@/providers/query-provider';
 import { ToastProvider } from '@/components/ui/Toast';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
+import { ServiceWorkerRegistration } from '@/components/pwa/ServiceWorkerRegistration';
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://vauban.blog';
 
@@ -18,6 +20,12 @@ export const metadata: Metadata = {
   keywords: ['web3', 'blog', 'starknet', 'decentralized', 'blockchain', 'arweave', 'ipfs', 'madara', 'l3'],
   authors: [{ name: 'Vauban Blog' }],
   creator: 'Vauban Blog',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Vauban Blog',
+  },
   openGraph: {
     type: 'website',
     locale: 'en_US',
@@ -51,6 +59,9 @@ export const metadata: Metadata = {
       'max-snippet': -1,
     },
   },
+  other: {
+    'mobile-web-app-capable': 'yes',
+  },
 };
 
 export default function RootLayout({
@@ -60,19 +71,26 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <meta name="theme-color" content="#6366f1" />
+        <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+      </head>
       <body className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors">
+        <ServiceWorkerRegistration />
         <ThemeProvider>
-          <WalletProvider>
-            <ToastProvider>
-              <div className="min-h-screen flex flex-col">
-                <Header />
-                <main className="flex-1">
-                  {children}
-                </main>
-                <Footer />
-              </div>
-            </ToastProvider>
-          </WalletProvider>
+          <QueryProvider>
+            <WalletProvider>
+              <ToastProvider>
+                <div className="min-h-screen flex flex-col">
+                  <Header />
+                  <main className="flex-1">
+                    {children}
+                  </main>
+                  <Footer />
+                </div>
+              </ToastProvider>
+            </WalletProvider>
+          </QueryProvider>
         </ThemeProvider>
       </body>
     </html>

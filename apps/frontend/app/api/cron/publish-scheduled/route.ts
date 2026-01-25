@@ -48,6 +48,39 @@ async function writeScheduledPosts(posts: ScheduledPost[]): Promise<void> {
 
 async function publishPost(post: ScheduledPost): Promise<{ success: boolean; error?: string; txHash?: string }> {
   try {
+    // Sanitize data to fit M2M API validation limits
+    let excerpt = post.postData.excerpt.trim();
+    if (excerpt.length > 500) {
+      excerpt = excerpt.substring(0, 497) + '...';
+    }
+    if (excerpt.length < 10) {
+      excerpt = post.postData.content.trim().substring(0, 200) + '...';
+    }
+
+    let slug = post.postData.slug;
+    if (slug.length > 100) {
+      slug = slug.substring(0, 100);
+      const lastHyphen = slug.lastIndexOf('-');
+      if (lastHyphen > 50) slug = slug.substring(0, lastHyphen);
+    }
+
+    // Build request body, omitting empty/undefined values
+    const requestBody: Record<string, unknown> = {
+      title: post.postData.title,
+      slug,
+      content: post.postData.content,
+      excerpt,
+      tags: post.postData.tags,
+      isPaid: post.postData.isPaid,
+      price: post.postData.price,
+      isEncrypted: post.postData.isEncrypted,
+    };
+
+    // Only include coverImage if it's a non-empty string
+    if (post.postData.coverImage && post.postData.coverImage.trim() !== '') {
+      requestBody.coverImage = post.postData.coverImage;
+    }
+
     // Use M2M API to publish
     const response = await fetch(`${BASE_URL}/api/m2m/publish`, {
       method: 'POST',
@@ -55,22 +88,18 @@ async function publishPost(post: ScheduledPost): Promise<{ success: boolean; err
         'Content-Type': 'application/json',
         'X-API-Key': M2M_API_KEY || '',
       },
-      body: JSON.stringify({
-        title: post.postData.title,
-        slug: post.postData.slug,
-        content: post.postData.content,
-        excerpt: post.postData.excerpt,
-        tags: post.postData.tags,
-        coverImage: post.postData.coverImage,
-        // Note: isPaid and price would need M2M API extension
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      // Include validation details if available
+      const errorDetails = errorData.details
+        ? `: ${JSON.stringify(errorData.details)}`
+        : '';
       return {
         success: false,
-        error: errorData.error || `HTTP ${response.status}: ${response.statusText}`,
+        error: (errorData.error || `HTTP ${response.status}: ${response.statusText}`) + errorDetails,
       };
     }
 

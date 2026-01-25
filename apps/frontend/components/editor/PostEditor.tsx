@@ -5,12 +5,14 @@ import { useWallet } from '@/providers/wallet-provider';
 import { PostInputSchema } from '@vauban/shared-types';
 import { calculateContentHash } from '@vauban/web3-utils';
 import ImageUpload from '@/components/editor/ImageUpload';
-import MarkdownEditor from '@/components/editor/MarkdownEditor';
+import TiptapSplitEditor, { type TiptapSplitEditorHandle } from '@/components/editor/TiptapSplitEditor';
 import TagInput from '@/components/editor/TagInput';
 import SaveStatusIndicator from '@/components/editor/SaveStatusIndicator';
 import DraftRecoveryModal from '@/components/editor/DraftRecoveryModal';
 import AIAssistant from '@/components/editor/AIAssistant';
 import AISettingsPanel from '@/components/admin/AISettingsPanel';
+import FieldWithAI from '@/components/editor/FieldWithAI';
+import FloatingAIToolbar from '@/components/editor/FloatingAIToolbar';
 import {
   getDraft,
   saveDraft,
@@ -102,7 +104,7 @@ export interface PostFormData {
 export const PostEditor: FC<PostEditorProps> = ({
   mode,
   initialData,
-  postId: _postId, // Reserved for future version history feature
+  // postId - Reserved for future version history feature
   draftId: initialDraftId = null,
   onSuccess,
   onDraftIdChange,
@@ -125,6 +127,7 @@ export const PostEditor: FC<PostEditorProps> = ({
   const [draftId, setDraftId] = useState<string | null>(initialDraftId);
   const [scheduledAt, setScheduledAt] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<string>('');
   const [arweaveStatus, setArweaveStatus] = useState<'checking' | 'connected' | 'unavailable'>('checking');
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(Boolean(initialData?.slug));
@@ -135,7 +138,10 @@ export const PostEditor: FC<PostEditorProps> = ({
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [selectedText, setSelectedText] = useState('');
   const [selectionRange, setSelectionRange] = useState<{ start: number; end: number } | null>(null);
+  const [selectionRect, setSelectionRect] = useState<DOMRect | null>(null);
+  const [showFloatingToolbar, setShowFloatingToolbar] = useState(false);
   const editorContainerRef = useRef<HTMLDivElement>(null);
+  const tiptapEditorRef = useRef<TiptapSplitEditorHandle>(null);
 
   // Prepare form data for autosave hook (convert tags array to string)
   const draftFormData = {
@@ -173,9 +179,9 @@ export const PostEditor: FC<PostEditorProps> = ({
     },
   });
 
-  // Generate slug from title
+  // Generate slug from title (max 100 chars for API compatibility)
   const generateSlug = (title: string): string => {
-    return title
+    let slug = title
       .toLowerCase()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '') // Remove accents
@@ -183,6 +189,17 @@ export const PostEditor: FC<PostEditorProps> = ({
       .replace(/\s+/g, '-') // Replace spaces with hyphens
       .replace(/-+/g, '-') // Replace multiple hyphens with single
       .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
+
+    // Truncate to 100 chars max, cutting at word boundary
+    if (slug.length > 100) {
+      slug = slug.substring(0, 100);
+      const lastHyphen = slug.lastIndexOf('-');
+      if (lastHyphen > 50) {
+        slug = slug.substring(0, lastHyphen);
+      }
+    }
+
+    return slug;
   };
 
   // Handle title change with auto-slug generation
@@ -265,39 +282,90 @@ export const PostEditor: FC<PostEditorProps> = ({
     };
   }, [mode, draftId]);
 
-  // Track text selection in editor
+  // Handle selection changes from Tiptap editor
+  const handleTiptapSelectionChange = useCallback((text: string) => {
+    setSelectedText(text);
+    // Clear textarea-related states since we're using Tiptap
+    if (text) {
+      setSelectionRange(null); // Tiptap handles its own selection
+    } else {
+      setSelectionRange(null);
+      setSelectionRect(null);
+      setShowFloatingToolbar(false);
+    }
+  }, []);
+
+  // Keyboard shortcuts (Cmd/Ctrl+S to save, Cmd/Ctrl+Shift+P to toggle AI sidebar)
   useEffect(() => {
-    const handleSelectionChange = () => {
-      const textarea = editorContainerRef.current?.querySelector('textarea');
-      if (textarea && document.activeElement === textarea) {
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-        if (start !== end) {
-          setSelectedText(formData.content.substring(start, end));
-          setSelectionRange({ start, end });
-        } else {
-          setSelectedText('');
-          setSelectionRange(null);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const modifier = isMac ? e.metaKey : e.ctrlKey;
+
+      if (modifier && e.key === 's') {
+        e.preventDefault();
+        // Trigger form submission
+        const form = document.querySelector('form');
+        if (form && !isSubmitting) {
+          form.requestSubmit();
         }
+      }
+
+      if (modifier && e.shiftKey && e.key === 'p') {
+        e.preventDefault();
+        setAiSidebarExpanded((prev) => !prev);
       }
     };
 
-    document.addEventListener('selectionchange', handleSelectionChange);
-    return () => document.removeEventListener('selectionchange', handleSelectionChange);
-  }, [formData.content]);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isSubmitting]);
 
   // AI Assistant callbacks
   const handleAIReplaceText = useCallback((newText: string) => {
+    // Use Tiptap editor ref if available
+    if (tiptapEditorRef.current) {
+      tiptapEditorRef.current.replaceSelectedText(newText);
+      setSelectedText('');
+      setSelectionRect(null);
+      setShowFloatingToolbar(false);
+      return;
+    }
+    // Fallback for textarea (legacy)
     if (selectionRange) {
       const before = formData.content.substring(0, selectionRange.start);
       const after = formData.content.substring(selectionRange.end);
       setFormData({ ...formData, content: before + newText + after });
       setSelectedText('');
       setSelectionRange(null);
+      setSelectionRect(null);
+      setShowFloatingToolbar(false);
+    }
+  }, [formData, selectionRange]);
+
+  const handleFloatingToolbarClose = useCallback(() => {
+    setShowFloatingToolbar(false);
+    setSelectionRect(null);
+  }, []);
+
+  const handleAIInsertAfterSelection = useCallback((newText: string) => {
+    if (selectionRange) {
+      const before = formData.content.substring(0, selectionRange.end);
+      const after = formData.content.substring(selectionRange.end);
+      setFormData({ ...formData, content: before + '\n\n' + newText + after });
+      setSelectedText('');
+      setSelectionRange(null);
+      setSelectionRect(null);
+      setShowFloatingToolbar(false);
     }
   }, [formData, selectionRange]);
 
   const handleAIInsertText = useCallback((newText: string) => {
+    // Use Tiptap editor ref if available
+    if (tiptapEditorRef.current) {
+      tiptapEditorRef.current.insertTextAtEnd(newText);
+      return;
+    }
+    // Fallback for textarea (legacy)
     setFormData({ ...formData, content: formData.content + '\n\n' + newText });
   }, [formData]);
 
@@ -643,18 +711,19 @@ export const PostEditor: FC<PostEditorProps> = ({
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Title */}
-            <div>
-              <label className="block text-sm font-semibold mb-2">Title</label>
-              <input
-                type="text"
-                value={formData.title}
-                onChange={(e) => handleTitleChange(e.target.value)}
-                className="w-full border rounded px-4 py-2 dark:bg-gray-900 dark:border-gray-700"
-                required
-              />
-            </div>
+          <div className="max-w-4xl mx-auto">
+            <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Title with AI suggestions */}
+            <FieldWithAI
+              label="Title"
+              value={formData.title}
+              onChange={handleTitleChange}
+              aiAction="suggest_title"
+              aiContext={formData.content}
+              placeholder="Enter your article title..."
+              required
+              helperText="AI can suggest a compelling title based on your content"
+            />
 
             {/* Slug */}
             <div>
@@ -694,43 +763,155 @@ export const PostEditor: FC<PostEditorProps> = ({
               </p>
             </div>
 
-            {/* Excerpt */}
-            <div>
-              <label className="block text-sm font-semibold mb-2">Excerpt</label>
-              <textarea
-                value={formData.excerpt}
-                onChange={(e) => setFormData({ ...formData, excerpt: e.target.value })}
-                className="w-full border rounded px-4 py-2 dark:bg-gray-900 dark:border-gray-700"
-                rows={3}
-                required
-              />
-            </div>
+            {/* Excerpt with AI generation */}
+            <FieldWithAI
+              label="Excerpt"
+              value={formData.excerpt}
+              onChange={(excerpt) => setFormData({ ...formData, excerpt })}
+              aiAction="suggest_excerpt"
+              aiContext={formData.content}
+              placeholder="A brief summary of your article..."
+              required
+              multiline
+              rows={3}
+              helperText="AI can generate an engaging excerpt from your content"
+            />
 
-            {/* Content (MDX) */}
+            {/* Content (MDX) with AI */}
             <div ref={editorContainerRef}>
-              <label className="block text-sm font-semibold mb-2">Content (Markdown)</label>
-              <MarkdownEditor
-                value={formData.content}
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-semibold">Content (Markdown)</label>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    AI: Select text + bubble menu or type "/"
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      alert('AI Actions:\n\n1. Select text → Click AI button in bubble menu\n2. Type "/" for slash commands\n3. Available actions: Improve, Fix grammar, Shorter, Longer, Translate');
+                    }}
+                    className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-lg transition-colors text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/20"
+                    title="AI actions help"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <TiptapSplitEditor
+                ref={tiptapEditorRef}
+                content={formData.content}
                 onChange={(content) => setFormData({ ...formData, content })}
                 placeholder="Write your article content in Markdown..."
-                minHeight={500}
+                editable={!isSubmitting}
+                onSelectionChange={handleTiptapSelectionChange}
               />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Use AI to improve your writing: select text for quick actions or type "/" for commands
+              </p>
             </div>
 
-            {/* Tags */}
-            <div>
-              <label className="block text-sm font-semibold mb-2">Tags</label>
+            {/* Tags with AI */}
+            <FieldWithAI
+              label="Tags"
+              value={formData.tags.join(', ')}
+              onChange={(tagsStr) => {
+                const tags = tagsStr.split(',').map(t => t.trim()).filter(Boolean);
+                setFormData({ ...formData, tags });
+              }}
+              aiAction="suggest_tags"
+              aiContext={formData.content}
+              helperText="AI can suggest relevant tags based on your content"
+            >
               <TagInput
                 value={formData.tags}
                 onChange={(tags) => setFormData({ ...formData, tags })}
                 placeholder="Add tags..."
                 maxTags={10}
               />
-            </div>
+            </FieldWithAI>
 
-            {/* Cover Image */}
+            {/* Cover Image with AI */}
             <div>
-              <label className="block text-sm font-semibold mb-2">Cover Image</label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-semibold">Cover Image</label>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!formData.title && !formData.content) {
+                      alert('Please add a title or content first');
+                      return;
+                    }
+
+                    setIsGeneratingImage(true);
+                    try {
+                      const { generateCoverImage } = await import('@/lib/ai-images');
+                      const result = await generateCoverImage(formData.title, formData.content);
+                      if (result.success) {
+                        // If it's a blob URL, upload to IPFS first
+                        if (result.url.startsWith('blob:')) {
+                          const blobResponse = await fetch(result.url);
+                          const blob = await blobResponse.blob();
+
+                          // Upload to IPFS
+                          const ipfsFormData = new FormData();
+                          ipfsFormData.append('file', blob, 'cover.png');
+
+                          const ipfsResponse = await fetch('/api/ipfs/add', {
+                            method: 'POST',
+                            body: ipfsFormData,
+                          });
+
+                          if (!ipfsResponse.ok) {
+                            throw new Error('Failed to upload image to IPFS');
+                          }
+
+                          const ipfsData = await ipfsResponse.json();
+                          const ipfsUrl = `/api/ipfs/${ipfsData.cid}`;
+                          setFormData({ ...formData, coverImage: ipfsUrl });
+
+                          // Revoke blob URL to free memory
+                          URL.revokeObjectURL(result.url);
+                        } else {
+                          // Direct URL (e.g., from Together AI)
+                          setFormData({ ...formData, coverImage: result.url });
+                        }
+                      } else {
+                        alert(`Error: ${result.error}`);
+                      }
+                    } catch (error) {
+                      alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                    } finally {
+                      setIsGeneratingImage(false);
+                    }
+                  }}
+                  disabled={isGeneratingImage}
+                  className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded-lg transition-colors ${
+                    isGeneratingImage
+                      ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400'
+                      : 'text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/20'
+                  }`}
+                  title="Generate cover image with AI"
+                >
+                  {isGeneratingImage ? (
+                    <>
+                      <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      <span>Generating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span>AI</span>
+                    </>
+                  )}
+                </button>
+              </div>
               {formData.coverImage ? (
                 <div className="space-y-2">
                   <img
@@ -760,6 +941,9 @@ export const PostEditor: FC<PostEditorProps> = ({
                   onUpload={(url) => setFormData({ ...formData, coverImage: url })}
                 />
               )}
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Upload an image or generate one with AI based on your article
+              </p>
             </div>
 
             {/* Pricing (create mode only) */}
@@ -896,6 +1080,7 @@ export const PostEditor: FC<PostEditorProps> = ({
               </button>
             </div>
           </form>
+          </div>
 
           {/* Draft Recovery Modal (create mode only) */}
           {mode === 'create' && (
@@ -913,6 +1098,19 @@ export const PostEditor: FC<PostEditorProps> = ({
             isOpen={aiSettingsOpen}
             onClose={() => setAiSettingsOpen(false)}
           />
+
+          {/* Floating AI Toolbar - appears on text selection */}
+          {showFloatingToolbar && selectedText && selectionRect && (
+            <FloatingAIToolbar
+              selectedText={selectedText}
+              selectionRect={selectionRect}
+              fullContent={formData.content}
+              onReplaceText={handleAIReplaceText}
+              onInsertAfter={handleAIInsertAfterSelection}
+              onClose={handleFloatingToolbarClose}
+              containerRef={editorContainerRef}
+            />
+          )}
         </div>
       </div>
 

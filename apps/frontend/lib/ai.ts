@@ -16,28 +16,42 @@ import {
   getTextProviderApiKey,
   getBestModelForTask,
   getTaskTypeForAction,
+  getOpenRouterModelForTask,
+  getAvailableFallbackProviders,
 } from './ai-providers';
 import { getAIConfig } from './ai-config';
 
-// Schema for chat completion response (OpenAI-compatible)
+// Schema for chat completion response (OpenAI-compatible, with flexibility)
 const ChatCompletionMessageSchema = z.object({
-  role: z.enum(['assistant', 'user', 'system']),
+  role: z.enum(['assistant', 'user', 'system']).optional(),
   content: z.string(),
 });
 
 const ChatCompletionChoiceSchema = z.object({
-  index: z.number(),
+  index: z.number().optional(),
   message: ChatCompletionMessageSchema,
-  finish_reason: z.string().nullable(),
+  finish_reason: z.string().nullable().optional(),
 });
 
+// Flexible schema that handles variations in API responses
 const ChatCompletionResponseSchema = z.object({
-  id: z.string(),
-  object: z.string(),
-  created: z.number(),
-  model: z.string(),
+  id: z.string().optional(),
+  object: z.string().optional(),
+  created: z.number().optional(),
+  model: z.string().optional(),
   choices: z.array(ChatCompletionChoiceSchema),
 });
+
+// Alternative response format (some providers return this)
+const AlternativeResponseSchema = z.object({
+  response: z.string(),
+}).or(z.object({
+  content: z.string(),
+}).or(z.object({
+  text: z.string(),
+}).or(z.object({
+  output: z.string(),
+}))));
 
 // Gemini response schema
 const GeminiResponseSchema = z.object({
@@ -166,9 +180,9 @@ export type AIAction = keyof typeof SYSTEM_PROMPTS;
 /**
  * Get the current provider and model from config
  * Returns null for apiKey if provider requires one but it's not configured
- * Supports automatic model selection for LocalAI based on task type
+ * Supports automatic model selection for LocalAI and OpenRouter based on task type
  */
-async function getProviderConfig(options: AIRequestOptions): Promise<{
+async function getProviderConfig(options: AIRequestOptions & { forceProvider?: TextProvider }): Promise<{
   provider: TextProvider;
   model: string;
   apiKey: string | null;
@@ -176,9 +190,12 @@ async function getProviderConfig(options: AIRequestOptions): Promise<{
   missingApiKey: boolean;
   autoSelected: boolean;
 }> {
-  let provider = options.provider;
+  let provider = options.forceProvider ?? options.provider;
   let model = options.model;
   let autoSelected = false;
+
+  // Determine task type early for model selection
+  const taskType = options.taskType ?? (options.action ? getTaskTypeForAction(options.action) : 'medium');
 
   // If not specified, use config (respect admin's choice)
   if (!provider) {
@@ -187,14 +204,20 @@ async function getProviderConfig(options: AIRequestOptions): Promise<{
 
     // Automatic model selection for LocalAI
     if (provider === 'localai' && config.autoModelSelection && !model) {
-      // Determine task type from action or explicit taskType
-      const taskType = options.taskType ?? (options.action ? getTaskTypeForAction(options.action) : 'medium');
       const bestModel = await getBestModelForTask(taskType);
       model = bestModel.model;
+      autoSelected = true;
+    } else if (provider === 'openrouter' && !model) {
+      // Automatic model selection for OpenRouter based on task type
+      model = getOpenRouterModelForTask(taskType);
       autoSelected = true;
     } else {
       model = model ?? config.textModel;
     }
+  } else if (provider === 'openrouter' && !model) {
+    // If provider is explicitly OpenRouter but no model specified, auto-select
+    model = getOpenRouterModelForTask(taskType);
+    autoSelected = true;
   }
 
   const providerConfig = TEXT_PROVIDERS[provider];
@@ -410,29 +433,102 @@ async function chatCompletionOpenAI(
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error');
+      let errorMessage = `API error: ${response.status}`;
+
+      // Try to parse JSON error for better message
+      try {
+        const errorJson = JSON.parse(errorText);
+        if (errorJson.error?.message) {
+          errorMessage = errorJson.error.message;
+        } else if (errorJson.message) {
+          errorMessage = errorJson.message;
+        }
+      } catch {
+        // If not JSON, use raw text (but truncate)
+        if (errorText.length > 100) {
+          errorMessage = errorText.slice(0, 100) + '...';
+        } else {
+          errorMessage = errorText || 'Unknown API error';
+        }
+      }
+
+      // Add status code for context
+      if (response.status >= 500) {
+        errorMessage = `Erreur serveur IA (${response.status}): ${errorMessage}. Réessayez.`;
+      } else if (response.status === 429) {
+        errorMessage = 'Limite de requêtes atteinte. Attendez quelques secondes.';
+      } else if (response.status === 401 || response.status === 403) {
+        errorMessage = 'Clé API invalide ou expirée. Vérifiez votre configuration.';
+      }
+
       return {
         success: false,
-        error: `API error: ${response.status} - ${errorText}`,
+        error: errorMessage,
         code: 'API_ERROR',
       };
     }
 
     const data = await response.json();
-    const parsed = ChatCompletionResponseSchema.safeParse(data);
 
-    if (!parsed.success) {
+    // Check for error in response body (some APIs return 200 with error in body)
+    if (data.error) {
+      let errorMessage = data.error.message || data.error;
+
+      // Handle specific error codes
+      if (data.error.code === 402) {
+        errorMessage = 'Limite de crédit API atteinte. Vérifiez votre compte OpenRouter.';
+      } else if (data.error.code === 429) {
+        errorMessage = 'Limite de requêtes atteinte. Attendez quelques secondes.';
+      } else if (data.error.metadata?.raw) {
+        // Extract error from nested metadata
+        try {
+          const rawError = JSON.parse(data.error.metadata.raw);
+          if (rawError.error) {
+            errorMessage = rawError.error;
+          }
+        } catch {
+          // Ignore parse error
+        }
+      }
+
       return {
         success: false,
-        error: `Invalid response format: ${parsed.error.message}`,
-        code: 'VALIDATION_ERROR',
+        error: errorMessage,
+        code: 'API_ERROR',
       };
     }
 
-    const content = parsed.data.choices[0]?.message.content;
-    if (content === undefined) {
+    // Try standard OpenAI format first
+    const parsed = ChatCompletionResponseSchema.safeParse(data);
+
+    let content: string | undefined;
+
+    if (parsed.success && parsed.data.choices?.[0]?.message?.content) {
+      content = parsed.data.choices[0].message.content;
+    } else {
+      // Try alternative response formats
+      const alt = AlternativeResponseSchema.safeParse(data);
+      if (alt.success) {
+        const altData = alt.data as { response?: string; content?: string; text?: string; output?: string };
+        content = altData.response || altData.content || altData.text || altData.output;
+      } else if (typeof data === 'string') {
+        // Some APIs return raw string
+        content = data;
+      } else if (data?.message?.content) {
+        // Direct message format
+        content = data.message.content;
+      } else if (data?.result) {
+        // Result wrapper format
+        content = typeof data.result === 'string' ? data.result : data.result?.content;
+      }
+    }
+
+    if (content === undefined || content === null) {
+      // Log the actual response for debugging
+      console.error('AI response parsing failed:', JSON.stringify(data).slice(0, 500));
       return {
         success: false,
-        error: 'No content in response',
+        error: 'No content in API response. Check console for details.',
         code: 'VALIDATION_ERROR',
       };
     }
@@ -458,6 +554,7 @@ async function chatCompletionOpenAI(
 
 /**
  * Send a chat completion request to the configured AI provider
+ * Supports automatic fallback to other providers on failure (429, network errors)
  */
 export async function chatCompletion(
   messages: ChatMessage[],
@@ -465,6 +562,64 @@ export async function chatCompletion(
 ): Promise<AIResponse<string>> {
   const config = await getProviderConfig(options);
 
+  // Try the primary provider first
+  const result = await chatCompletionWithProvider(messages, config, options);
+
+  // If successful or user explicitly disabled fallback, return result
+  if (result.success || options.provider) {
+    return result;
+  }
+
+  // Check if we should attempt fallback (only on rate limit or network errors)
+  const shouldFallback = result.code === 'API_ERROR' || result.code === 'NETWORK_ERROR' || result.code === 'TIMEOUT';
+  if (!shouldFallback) {
+    return result;
+  }
+
+  // Get available fallback providers
+  const fallbacks = getAvailableFallbackProviders(config.provider);
+  if (fallbacks.length === 0) {
+    return result;
+  }
+
+  // Try fallback providers
+  console.log(`[AI] Primary provider ${config.provider} failed, trying fallbacks: ${fallbacks.join(', ')}`);
+
+  for (const fallbackProvider of fallbacks) {
+    const fallbackConfig = await getProviderConfig({ ...options, forceProvider: fallbackProvider });
+
+    // Skip if fallback has missing API key
+    if (fallbackConfig.missingApiKey) {
+      continue;
+    }
+
+    const fallbackResult = await chatCompletionWithProvider(messages, fallbackConfig, options);
+
+    if (fallbackResult.success) {
+      console.log(`[AI] Fallback to ${fallbackProvider} succeeded`);
+      return {
+        ...fallbackResult,
+        // Add info that this was a fallback
+        data: fallbackResult.data,
+      };
+    }
+  }
+
+  // All fallbacks failed, return original error
+  return {
+    ...result,
+    error: `${result.error} (fallbacks also failed: ${fallbacks.join(', ')})`,
+  };
+}
+
+/**
+ * Internal: Send chat completion to a specific provider
+ */
+async function chatCompletionWithProvider(
+  messages: ChatMessage[],
+  config: Awaited<ReturnType<typeof getProviderConfig>>,
+  options: AIRequestOptions
+): Promise<AIResponse<string>> {
   switch (config.provider) {
     case 'gemini':
       if (!config.apiKey) {

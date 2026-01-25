@@ -19,7 +19,7 @@ const CONFIG_KEY = 'vauban_ai_config';
 const AIConfigSchema = z.object({
   textProvider: z.enum(['gemini', 'groq', 'openrouter', 'localai']),
   textModel: z.string().min(1),
-  imageProvider: z.enum(['together', 'pollinations']),
+  imageProvider: z.enum(['huggingface', 'together', 'pollinations']),
   imageModel: z.string().min(1),
   // Auto mode: automatically select the best model based on task type
   autoModelSelection: z.boolean().default(true),
@@ -35,11 +35,21 @@ export function getDefaultConfig(): AIConfig {
   const textProvider = getBestAvailableTextProvider();
   const imageProvider = getBestAvailableImageProvider();
 
+  // Use the first free model for OpenRouter
+  const textModel = textProvider === 'openrouter'
+    ? 'google/gemini-2.0-flash-exp:free'
+    : TEXT_PROVIDERS[textProvider].models[0] ?? 'mistral';
+
+  // Use FLUX for Hugging Face (best free image model)
+  const imageModel = imageProvider === 'huggingface'
+    ? 'black-forest-labs/FLUX.1-schnell'
+    : IMAGE_PROVIDERS[imageProvider].models[0] ?? 'flux';
+
   return {
     textProvider,
-    textModel: TEXT_PROVIDERS[textProvider].models[0] ?? 'mistral',
+    textModel,
     imageProvider,
-    imageModel: IMAGE_PROVIDERS[imageProvider].models[0] ?? 'flux',
+    imageModel,
     autoModelSelection: true, // Enable auto mode by default
   };
 }

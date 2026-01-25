@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -54,13 +55,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 function ToastContainer({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: string) => void }) {
-  if (toasts.length === 0) return null;
-
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
-      {toasts.map(toast => (
-        <ToastItem key={toast.id} toast={toast} onDismiss={onDismiss} />
-      ))}
+      <AnimatePresence mode="popLayout">
+        {toasts.map(toast => (
+          <ToastItem key={toast.id} toast={toast} onDismiss={onDismiss} />
+        ))}
+      </AnimatePresence>
     </div>
   );
 }
@@ -97,8 +98,12 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string)
   };
 
   return (
-    <div
-      className={`flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg animate-slide-in ${typeStyles[toast.type]}`}
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 50, scale: 0.3 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.5, transition: { duration: 0.2 } }}
+      className={`flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg ${typeStyles[toast.type]}`}
       role="alert"
     >
       {icons[toast.type]}
@@ -112,6 +117,6 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string)
           <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
         </svg>
       </button>
-    </div>
+    </motion.div>
   );
 }

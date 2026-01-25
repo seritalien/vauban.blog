@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useEffect, useCallback, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { usePosts } from '@/hooks/use-posts';
 import { useWallet } from '@/providers/wallet-provider';
 import { useRole } from '@/hooks/use-role';
@@ -13,6 +14,7 @@ import Link from 'next/link';
 import { format, subDays, isAfter, formatDistanceToNow } from 'date-fns';
 import { normalizeAddress, getProfile, saveProfile, formatAddress } from '@/lib/profiles';
 import ImageUpload from '@/components/editor/ImageUpload';
+import { LoadingPage } from '@/components/ui/Loading';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,13 +57,24 @@ interface ReputationData {
   likeCount: number;
 }
 
-export default function ProfilePage() {
+// Wrapper component to handle Suspense for useSearchParams
+function ProfilePageContent() {
   const { address, isConnected } = useWallet();
   const { posts, isLoading } = usePosts(100, 0);
   const { roleLabel, userRole } = useRole();
+  const searchParams = useSearchParams();
 
-  // Active tab
-  const [activeTab, setActiveTab] = useState<ProfileTab>('overview');
+  // Active tab - read from URL param or default to 'overview'
+  const tabParam = searchParams.get('tab') as ProfileTab | null;
+  const initialTab = tabParam && ['overview', 'posts', 'settings'].includes(tabParam) ? tabParam : 'overview';
+  const [activeTab, setActiveTab] = useState<ProfileTab>(initialTab);
+
+  // Update tab when URL param changes
+  useEffect(() => {
+    if (tabParam && ['overview', 'posts', 'settings'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam]);
 
   // Scheduled posts state
   const [scheduledPosts, setScheduledPosts] = useState<ScheduledPost[]>([]);
@@ -483,7 +496,7 @@ function OverviewTab({
                   <span className="text-gray-500 dark:text-gray-400 text-sm">No badges yet</span>
                 ) : (
                   userBadges.map((badgeName) => {
-                    const badge = BADGES[badgeName];
+                    const badge = BADGES[badgeName as keyof typeof BADGES];
                     return (
                       <div
                         key={badgeName}
@@ -1022,5 +1035,14 @@ function RecentPostsTable({
         </div>
       )}
     </div>
+  );
+}
+
+// Main page component with Suspense boundary for useSearchParams
+export default function ProfilePage() {
+  return (
+    <Suspense fallback={<LoadingPage message="Loading profile..." />}>
+      <ProfilePageContent />
+    </Suspense>
   );
 }

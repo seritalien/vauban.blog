@@ -27,10 +27,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 1,
     },
     {
-      url: `${siteUrl}/admin`,
+      url: `${siteUrl}/profile`,
       lastModified: new Date(),
-      changeFrequency: 'monthly',
-      priority: 0.5,
+      changeFrequency: 'weekly',
+      priority: 0.6,
     },
   ];
 
@@ -40,12 +40,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const posts = await getPosts(100, 0);
     articlePages = posts
       .filter((post) => !post.isDeleted)
-      .map((post) => ({
-        url: `${siteUrl}/articles/${post.id}`,
-        lastModified: new Date(post.updatedAt * 1000),
-        changeFrequency: 'weekly' as const,
-        priority: 0.8,
-      }));
+      .map((post) => {
+        // Use post ID for URL (slug is in content metadata, not on-chain)
+        return {
+          url: `${siteUrl}/articles/${post.id}`,
+          lastModified: new Date(post.updatedAt * 1000),
+          changeFrequency: 'weekly' as const,
+          priority: 0.8,
+        };
+      });
   } catch (error) {
     console.error('Failed to fetch posts for sitemap:', error);
   }

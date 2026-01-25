@@ -1,10 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { motion } from 'framer-motion';
 import { useWallet, NetworkId } from '@/providers/wallet-provider';
 import ThemeToggle from './ThemeToggle';
+import { CommandPalette, useCommandPalette } from '@/components/ui/CommandPalette';
 import { formatAddress } from '@vauban/web3-utils';
+import { useScrollDirection } from '@/hooks/useScrollDirection';
 
 // Network badge colors
 const NETWORK_STYLES: Record<NetworkId, { bg: string; text: string; label: string }> = {
@@ -28,18 +31,54 @@ const NETWORK_STYLES: Record<NetworkId, { bg: string; text: string; label: strin
 export default function Header() {
   const { address, isConnected, isConnecting, isDevMode, network, walletName, connectWallet, connectDevAccount, disconnectWallet, getAccountUrl } = useWallet();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const commandPalette = useCommandPalette();
+  const scrollDirection = useScrollDirection();
 
   const networkStyle = NETWORK_STYLES[network];
 
   return (
-    <header className="sticky top-0 z-50 border-b border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm">
+    <>
+    <motion.header
+      initial={false}
+      animate={{
+        y: scrollDirection === 'down' ? -100 : 0,
+      }}
+      transition={{
+        type: 'spring',
+        stiffness: 300,
+        damping: 30,
+      }}
+      className={`
+        sticky top-0 z-50 border-b transition-colors duration-200
+        ${scrollDirection === 'top'
+          ? 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700'
+          : 'backdrop-blur-lg bg-white/80 dark:bg-gray-900/80 border-gray-200/50 dark:border-gray-700/50'
+        }
+      `}
+    >
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo / Brand */}
-          <Link href="/" className="flex items-center gap-2">
-            <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">Vauban</span>
+          <Link href="/" className="flex items-center gap-2 group">
+            <span className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-blue-500 bg-clip-text text-transparent group-hover:from-purple-500 group-hover:to-blue-400 transition-all">
+              Vauban
+            </span>
             <span className="text-sm text-gray-500 dark:text-gray-400 hidden sm:inline">Blog</span>
           </Link>
+
+          {/* Search button (opens command palette) */}
+          <button
+            onClick={commandPalette.open}
+            className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <span>Search</span>
+            <kbd className="hidden lg:inline px-1.5 py-0.5 text-xs bg-gray-200 dark:bg-gray-700 rounded">
+              Ctrl K
+            </kbd>
+          </button>
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-6">
@@ -70,7 +109,7 @@ export default function Header() {
                   Drafts
                 </Link>
                 <Link
-                  href="/admin/profile"
+                  href="/profile"
                   className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
                 >
                   Profile
@@ -311,6 +350,10 @@ export default function Header() {
           </div>
         )}
       </div>
-    </header>
+    </motion.header>
+
+    {/* Command Palette */}
+    <CommandPalette isOpen={commandPalette.isOpen} onClose={commandPalette.close} />
+    </>
   );
 }

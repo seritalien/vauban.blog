@@ -1,10 +1,10 @@
 /**
  * AI Image Generation
  *
- * Provides image generation capabilities using Together AI or Pollinations.
+ * Provides image generation via server-side proxy to avoid CORS issues.
+ * Supports Hugging Face, Together AI, and Pollinations.
  */
 
-import { z } from 'zod';
 import {
   type ImageProvider,
   IMAGE_PROVIDERS,
@@ -39,87 +39,65 @@ export interface ImageGenerationError {
 
 export type ImageGenerationResponse = ImageGenerationResult | ImageGenerationError;
 
-// Together AI response schema
-const TogetherImageResponseSchema = z.object({
-  data: z.array(
-    z.object({
-      url: z.string().url().optional(),
-      b64_json: z.string().optional(),
-    })
-  ),
-});
-
 /**
- * Generate an image using Together AI
+ * Generate an image using the server-side proxy
+ * This avoids CORS issues with external APIs
  */
-async function generateWithTogether(
+async function generateViaProxy(
+  provider: ImageProvider,
   prompt: string,
   options: ImageGenerationOptions
 ): Promise<ImageGenerationResponse> {
-  const apiKey = getImageProviderApiKey('together');
-  if (!apiKey) {
-    return {
-      success: false,
-      error: 'Together AI API key not configured',
-      code: 'NO_PROVIDER',
-    };
-  }
-
-  const model = options.model ?? IMAGE_PROVIDERS.together.models[0] ?? 'black-forest-labs/FLUX.1-schnell';
+  const model = options.model ?? IMAGE_PROVIDERS[provider].models[0];
 
   try {
-    const response = await fetch('https://api.together.xyz/v1/images/generations', {
+    const response = await fetch('/api/ai/image', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model,
         prompt,
+        provider,
+        model,
         width: options.width ?? 1024,
         height: options.height ?? 768,
         steps: options.steps ?? 4,
-        n: 1,
-        response_format: 'url',
       }),
-      signal: options.signal ?? AbortSignal.timeout(60000),
+      signal: options.signal ?? AbortSignal.timeout(120000), // 2 min timeout
     });
 
     if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Unknown error');
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
       return {
         success: false,
-        error: `Together AI error: ${response.status} - ${errorText}`,
+        error: errorData.error || `Error ${response.status}`,
         code: 'API_ERROR',
       };
     }
 
-    const data = await response.json();
-    const parsed = TogetherImageResponseSchema.safeParse(data);
+    const contentType = response.headers.get('content-type') || '';
 
-    if (!parsed.success) {
+    // If the response is JSON, it contains a URL
+    if (contentType.includes('application/json')) {
+      const data = await response.json();
       return {
-        success: false,
-        error: `Invalid response format: ${parsed.error.message}`,
-        code: 'VALIDATION_ERROR',
+        success: true,
+        url: data.url,
+        provider,
+        model: model ?? 'unknown',
       };
     }
 
-    const imageData = parsed.data.data[0];
-    if (!imageData?.url) {
-      return {
-        success: false,
-        error: 'No image URL in response',
-        code: 'VALIDATION_ERROR',
-      };
-    }
+    // Otherwise, it's an image blob
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
 
     return {
       success: true,
-      url: imageData.url,
-      provider: 'together',
-      model,
+      url,
+      provider,
+      model: model ?? 'unknown',
     };
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
@@ -138,7 +116,45 @@ async function generateWithTogether(
 }
 
 /**
- * Generate an image using Pollinations API
+ * Generate an image using Hugging Face (via server proxy)
+ */
+async function generateWithHuggingFace(
+  prompt: string,
+  options: ImageGenerationOptions
+): Promise<ImageGenerationResponse> {
+  const apiKey = getImageProviderApiKey('huggingface');
+  if (!apiKey) {
+    return {
+      success: false,
+      error: 'Hugging Face API key not configured',
+      code: 'NO_PROVIDER',
+    };
+  }
+
+  return generateViaProxy('huggingface', prompt, options);
+}
+
+/**
+ * Generate an image using Together AI (via server proxy)
+ */
+async function generateWithTogether(
+  prompt: string,
+  options: ImageGenerationOptions
+): Promise<ImageGenerationResponse> {
+  const apiKey = getImageProviderApiKey('together');
+  if (!apiKey) {
+    return {
+      success: false,
+      error: 'Together AI API key not configured',
+      code: 'NO_PROVIDER',
+    };
+  }
+
+  return generateViaProxy('together', prompt, options);
+}
+
+/**
+ * Generate an image using Pollinations API (via server proxy)
  * Requires API key from enter.pollinations.ai
  */
 async function generateWithPollinations(
@@ -154,64 +170,43 @@ async function generateWithPollinations(
     };
   }
 
-  const width = options.width ?? 1024;
-  const height = options.height ?? 768;
-  const model = options.model ?? 'flux';
+  return generateViaProxy('pollinations', prompt, options);
+}
 
-  // Generate unique seed using timestamp + random to avoid cache issues
-  const seed = Date.now() + Math.floor(Math.random() * 1000000);
-  const encodedPrompt = encodeURIComponent(prompt);
+// Image provider fallback chain
+const IMAGE_PROVIDER_FALLBACK: Record<ImageProvider, ImageProvider[]> = {
+  huggingface: ['together', 'pollinations'],
+  together: ['huggingface', 'pollinations'],
+  pollinations: ['huggingface', 'together'],
+};
 
-  // Build URL with all parameters including seed for cache busting
-  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&model=${model}&seed=${seed}&nologo=true&enhance=true`;
-
-  try {
-    // Use Pollinations API with authentication header and full parameters
-    const response = await fetch(imageUrl, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      signal: options.signal ?? AbortSignal.timeout(60000),
-    });
-
-    if (!response.ok) {
-      // If auth fails, try URL-based approach with token param
-      const fallbackUrl = `${imageUrl}&token=${apiKey}`;
-
+/**
+ * Generate an image with a specific provider
+ */
+async function generateWithProvider(
+  provider: ImageProvider,
+  prompt: string,
+  options: ImageGenerationOptions
+): Promise<ImageGenerationResponse> {
+  switch (provider) {
+    case 'huggingface':
+      return generateWithHuggingFace(prompt, options);
+    case 'together':
+      return generateWithTogether(prompt, options);
+    case 'pollinations':
+      return generateWithPollinations(prompt, options);
+    default:
       return {
-        success: true,
-        url: fallbackUrl,
-        provider: 'pollinations',
-        model,
+        success: false,
+        error: `Unknown image provider: ${provider}`,
+        code: 'NO_PROVIDER',
       };
-    }
-
-    // If successful, create a blob URL from the response
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-
-    return {
-      success: true,
-      url,
-      provider: 'pollinations',
-      model,
-    };
-  } catch (error) {
-    // Fallback to URL-based approach with token
-    const fallbackUrl = `${imageUrl}&token=${apiKey}`;
-
-    return {
-      success: true,
-      url: fallbackUrl,
-      provider: 'pollinations',
-      model,
-    };
   }
 }
 
 /**
  * Generate an image using the configured provider
+ * Automatically falls back to other providers on failure
  */
 export async function generateImage(
   prompt: string,
@@ -229,26 +224,52 @@ export async function generateImage(
 
   // Check if provider is available
   if (!isImageProviderAvailable(provider)) {
-    return {
-      success: false,
-      error: `Aucun provider d'images configuré. Ajoutez NEXT_PUBLIC_TOGETHER_API_KEY dans .env.local (inscription gratuite sur together.ai)`,
-      code: 'NO_PROVIDER',
-    };
-  }
+    // Try to find an available fallback
+    const fallbacks = IMAGE_PROVIDER_FALLBACK[provider] ?? [];
+    const availableFallback = fallbacks.find(isImageProviderAvailable);
 
-  // Route to appropriate provider
-  switch (provider) {
-    case 'together':
-      return generateWithTogether(prompt, { ...options, model });
-    case 'pollinations':
-      return await generateWithPollinations(prompt, { ...options, model });
-    default:
+    if (availableFallback) {
+      console.log(`[AI Images] Primary provider ${provider} not available, using fallback: ${availableFallback}`);
+      provider = availableFallback;
+      model = undefined; // Let fallback use its default model
+    } else {
       return {
         success: false,
-        error: `Unknown image provider: ${provider}`,
+        error: `Aucun provider d'images configuré. Ajoutez NEXT_PUBLIC_HUGGINGFACE_API_KEY, NEXT_PUBLIC_TOGETHER_API_KEY ou NEXT_PUBLIC_POLLINATIONS_API_KEY dans .env.local`,
         code: 'NO_PROVIDER',
       };
+    }
   }
+
+  // Try primary provider
+  const result = await generateWithProvider(provider, prompt, { ...options, model });
+
+  // If successful or user explicitly specified provider, return
+  if (result.success || options.provider) {
+    return result;
+  }
+
+  // On failure, try fallback providers
+  const fallbacks = IMAGE_PROVIDER_FALLBACK[provider] ?? [];
+  const availableFallbacks = fallbacks.filter(isImageProviderAvailable);
+
+  for (const fallback of availableFallbacks) {
+    console.log(`[AI Images] Provider ${provider} failed, trying fallback: ${fallback}`);
+    const fallbackResult = await generateWithProvider(fallback, prompt, {
+      ...options,
+      model: undefined, // Use fallback's default model
+    });
+
+    if (fallbackResult.success) {
+      return fallbackResult;
+    }
+  }
+
+  // All providers failed
+  return {
+    ...result,
+    error: `${result.error} (fallbacks also failed)`,
+  };
 }
 
 /**

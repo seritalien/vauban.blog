@@ -6,10 +6,6 @@ import { usePost } from '@/hooks/use-posts';
 // Disable static generation for this page (requires IPFS/Arweave client-side)
 export const dynamic = 'force-dynamic';
 import { format } from 'date-fns';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
-import 'highlight.js/styles/github-dark.css';
 import CommentSection from '@/components/comments/CommentSection';
 import LikeButton from '@/components/social/LikeButton';
 import Paywall from '@/components/paywall/Paywall';
@@ -20,6 +16,11 @@ import { type AuthorProfile } from '@vauban/shared-types';
 import TableOfContents from '@/components/article/TableOfContents';
 import RelatedArticles from '@/components/article/RelatedArticles';
 import ShareButtons from '@/components/social/ShareButtons';
+import JsonLd from '@/components/seo/JsonLd';
+import { generateArticleJsonLd, generateBreadcrumbJsonLd } from '@/lib/seo';
+import ReadingProgress from '@/components/article/ReadingProgress';
+import ArticleContent from '@/components/article/ArticleContent';
+import ReadAloudButton from '@/components/article/ReadAloudButton';
 
 export default function ArticlePage({ params }: { params: Promise<{ slug: string }> }) {
   // Extract ID from params promise (Next.js 15)
@@ -54,9 +55,42 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
     );
   }
 
+  // Generate SEO data
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://vauban.blog';
+  const articleUrl = `${siteUrl}/articles/${postId}`;
+  const authorName = getDisplayName(post.author, authorProfile);
+
+  const articleJsonLd = generateArticleJsonLd({
+    title: post.title,
+    description: post.excerpt,
+    content: post.content,
+    url: articleUrl,
+    image: post.coverImage,
+    publishedTime: post.createdAt.toISOString(),
+    author: {
+      name: authorName,
+      url: `${siteUrl}/authors/${toAddressString(post.author)}`,
+    },
+    tags: post.tags,
+  });
+
+  const breadcrumbJsonLd = generateBreadcrumbJsonLd([
+    { name: 'Home', url: siteUrl },
+    { name: 'Articles', url: `${siteUrl}/articles` },
+    { name: post.title, url: articleUrl },
+  ]);
+
   return (
-    <article className="container mx-auto px-4 py-12 max-w-4xl">
-      {post.coverImage && (
+    <>
+      {/* Reading Progress Indicator */}
+      <ReadingProgress />
+
+      {/* SEO Structured Data */}
+      <JsonLd data={articleJsonLd} />
+      <JsonLd data={breadcrumbJsonLd} />
+
+      <article className="container mx-auto px-4 py-12 max-w-4xl">
+        {post.coverImage && (
         <img
           src={post.coverImage}
           alt={post.title}
@@ -119,13 +153,14 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
           )}
         </div>
 
-        {/* Share Buttons */}
-        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+        {/* Share Buttons + Read Aloud */}
+        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex flex-wrap items-center justify-between gap-4">
           <ShareButtons
             url={typeof window !== 'undefined' ? window.location.href : `https://vauban.blog/articles/${post.id}`}
             title={post.title}
             excerpt={post.excerpt}
           />
+          <ReadAloudButton content={post.content} />
         </div>
       </header>
 
@@ -135,58 +170,10 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
       {/* Article Content - wrapped in Paywall if paid */}
       {post.isPaid ? (
         <Paywall postId={post.id} price={post.price.toString()}>
-          <div className="prose prose-lg dark:prose-invert max-w-none mb-12">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeHighlight]}
-              components={{
-                h2: ({ children, ...props }) => {
-                  const text = String(children);
-                  const id = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
-                  return <h2 id={id} {...props}>{children}</h2>;
-                },
-                h3: ({ children, ...props }) => {
-                  const text = String(children);
-                  const id = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
-                  return <h3 id={id} {...props}>{children}</h3>;
-                },
-                h4: ({ children, ...props }) => {
-                  const text = String(children);
-                  const id = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
-                  return <h4 id={id} {...props}>{children}</h4>;
-                },
-              }}
-            >
-              {post.content}
-            </ReactMarkdown>
-          </div>
+          <ArticleContent content={post.content} className="mb-12" />
         </Paywall>
       ) : (
-        <div className="prose prose-lg dark:prose-invert max-w-none mb-12">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeHighlight]}
-            components={{
-              h2: ({ children, ...props }) => {
-                const text = String(children);
-                const id = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
-                return <h2 id={id} {...props}>{children}</h2>;
-              },
-              h3: ({ children, ...props }) => {
-                const text = String(children);
-                const id = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
-                return <h3 id={id} {...props}>{children}</h3>;
-              },
-              h4: ({ children, ...props }) => {
-                const text = String(children);
-                const id = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
-                return <h4 id={id} {...props}>{children}</h4>;
-              },
-            }}
-          >
-            {post.content}
-          </ReactMarkdown>
-        </div>
+        <ArticleContent content={post.content} className="mb-12" />
       )}
 
       {/* Content Verification + Storage Info */}
@@ -247,5 +234,6 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
       {/* Comments Section - Phase 5 Integration */}
       <CommentSection postId={post.id} />
     </article>
+    </>
   );
 }

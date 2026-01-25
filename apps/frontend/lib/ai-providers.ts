@@ -72,7 +72,7 @@ let lastFetchTime = 0;
 const CACHE_TTL = 30000; // 30 seconds
 
 // Image provider types
-export type ImageProvider = 'together' | 'pollinations';
+export type ImageProvider = 'huggingface' | 'together' | 'pollinations';
 
 // Provider configuration interface
 export interface TextProviderConfig {
@@ -120,21 +120,23 @@ export const TEXT_PROVIDERS: Record<TextProvider, TextProviderConfig> = {
     commercial: false,
   },
   openrouter: {
-    name: 'OpenRouter (18+ modèles gratuits)',
-    // Free models available on OpenRouter (as of 2024)
+    name: 'OpenRouter (modèles 100% gratuits)',
+    // ONLY FREE models - all must end with :free
+    // See: https://openrouter.ai/models?q=:free
     models: [
-      'mistralai/mistral-7b-instruct:free',
-      'meta-llama/llama-3.2-3b-instruct:free',
-      'google/gemma-2-9b-it:free',
-      'qwen/qwen-2.5-7b-instruct:free',
-      'microsoft/phi-3-mini-128k-instruct:free',
-      'huggingfaceh4/zephyr-7b-beta:free',
-      'openchat/openchat-7b:free',
-      'nousresearch/nous-capybara-7b:free',
+      // Google Gemini (best performance/speed, 100% free)
+      'google/gemini-2.0-flash-exp:free',      // Fastest, best quality (Jan 2026)
+      'google/gemini-2.5-flash-preview-05-20:free', // Alternative
+      // Meta Llama (high quality, slower)
+      'meta-llama/llama-3.3-70b-instruct:free', // Excellent quality, good French
+      // Mistral (good French support)
+      'mistralai/mistral-small-3.1-24b-instruct:free',
+      // Qwen (large context)
+      'qwen/qwen3-235b-a22b:free',
     ],
     baseUrl: 'https://openrouter.ai/api/v1',
-    latency: '~200ms',
-    free: '18+ modèles gratuits',
+    latency: '~100-500ms',
+    free: '100% gratuit (rate limits)',
     requiresApiKey: true,
     apiKeyEnvVar: 'NEXT_PUBLIC_OPENROUTER_API_KEY',
     commercial: true,
@@ -153,8 +155,51 @@ export const TEXT_PROVIDERS: Record<TextProvider, TextProviderConfig> = {
   },
 };
 
+// OpenRouter model selection by task type (for optimal speed/quality tradeoff)
+// ALL models MUST end with :free to ensure zero cost
+export const OPENROUTER_MODEL_BY_TASK: Record<AITaskType, string> = {
+  // Light tasks (tags, titles, excerpts): fastest model
+  light: 'google/gemini-2.0-flash-exp:free',
+  // Medium tasks (improve, simplify, fix): balanced model
+  medium: 'google/gemini-2.0-flash-exp:free',
+  // Heavy tasks (expand, translate, continue): quality model with good French
+  heavy: 'google/gemini-2.0-flash-exp:free',
+};
+
+// Fallback free models if primary fails (in order of preference)
+export const OPENROUTER_FREE_FALLBACKS: string[] = [
+  'google/gemini-2.0-flash-exp:free',      // Best free model currently
+  'google/gemini-2.5-flash-preview-05-20:free', // Alternative Gemini
+  'meta-llama/llama-3.3-70b-instruct:free', // High quality, slower
+  'mistralai/mistral-small-3.1-24b-instruct:free', // Good French
+  'qwen/qwen3-235b-a22b:free',              // Large, good reasoning
+];
+
+// Fallback chain when a provider fails
+export const PROVIDER_FALLBACK_CHAIN: Record<TextProvider, TextProvider[]> = {
+  gemini: ['openrouter', 'groq', 'localai'],
+  openrouter: ['gemini', 'groq', 'localai'],
+  groq: ['openrouter', 'gemini', 'localai'],
+  localai: ['openrouter', 'gemini', 'groq'],
+};
+
 // Image providers configuration
 export const IMAGE_PROVIDERS: Record<ImageProvider, ImageProviderConfig> = {
+  huggingface: {
+    name: 'Hugging Face (Gratuit)',
+    // Free image generation models
+    models: [
+      'black-forest-labs/FLUX.1-schnell',     // Fast, high quality
+      'stabilityai/stable-diffusion-xl-base-1.0', // SDXL
+      'stabilityai/stable-diffusion-3.5-large',   // SD 3.5
+    ],
+    baseUrl: 'https://api-inference.huggingface.co/models',
+    latency: '~3-15s',
+    free: '100% gratuit (rate limits)',
+    requiresApiKey: true,
+    apiKeyEnvVar: 'NEXT_PUBLIC_HUGGINGFACE_API_KEY',
+    commercial: true,
+  },
   together: {
     name: 'Together AI',
     models: ['black-forest-labs/FLUX.1-schnell', 'black-forest-labs/FLUX.1.1-pro'],
@@ -210,6 +255,8 @@ export function getImageProviderApiKey(provider: ImageProvider): string | null {
 
   // Access env vars at runtime
   switch (provider) {
+    case 'huggingface':
+      return process.env.NEXT_PUBLIC_HUGGINGFACE_API_KEY ?? null;
     case 'together':
       return process.env.NEXT_PUBLIC_TOGETHER_API_KEY ?? null;
     case 'pollinations':
@@ -278,8 +325,8 @@ export function getBestAvailableTextProvider(): TextProvider {
  * Get the best available image provider
  */
 export function getBestAvailableImageProvider(): ImageProvider {
-  // Priority order: together (faster), pollinations (always available)
-  const priority: ImageProvider[] = ['together', 'pollinations'];
+  // Priority order: huggingface (free), together ($1 credit), pollinations (requires signup)
+  const priority: ImageProvider[] = ['huggingface', 'together', 'pollinations'];
 
   for (const provider of priority) {
     if (isImageProviderAvailable(provider)) {
@@ -287,8 +334,8 @@ export function getBestAvailableImageProvider(): ImageProvider {
     }
   }
 
-  // Fallback to pollinations (always available)
-  return 'pollinations';
+  // Fallback to huggingface
+  return 'huggingface';
 }
 
 /**
@@ -416,4 +463,20 @@ export async function getBestModelForTask(
  */
 export function getTaskTypeForAction(action: string): AITaskType {
   return ACTION_TASK_TYPE[action] ?? 'medium';
+}
+
+/**
+ * Get the best OpenRouter model for a task type
+ */
+export function getOpenRouterModelForTask(taskType: AITaskType): string {
+  return OPENROUTER_MODEL_BY_TASK[taskType];
+}
+
+/**
+ * Get fallback providers for a given provider
+ * Returns only providers that are available (have API keys configured)
+ */
+export function getAvailableFallbackProviders(provider: TextProvider): TextProvider[] {
+  const fallbacks = PROVIDER_FALLBACK_CHAIN[provider] ?? [];
+  return fallbacks.filter(isTextProviderAvailable);
 }

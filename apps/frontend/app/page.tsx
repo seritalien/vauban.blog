@@ -2,8 +2,7 @@
 
 import { useState, useMemo, useCallback, Suspense } from 'react';
 import { usePosts, VerifiedPost } from '@/hooks/use-posts';
-import Link from 'next/link';
-import { format, subDays, subMonths, subYears, isAfter, isBefore } from 'date-fns';
+import { subDays, subMonths, subYears, isAfter, isBefore } from 'date-fns';
 import { ArticleCardSkeleton } from '@/components/ui/Skeleton';
 import SearchFilterBar from '@/components/search/SearchFilterBar';
 import { SearchFilters, DEFAULT_FILTERS } from '@/components/search/types';
@@ -11,7 +10,8 @@ import Pagination from '@/components/ui/Pagination';
 import HeroSection from '@/components/home/HeroSection';
 import TrustBadges from '@/components/ui/TrustBadges';
 import FeaturedArticles from '@/components/home/FeaturedArticles';
-import AuthorDisplay from '@/components/ui/AuthorDisplay';
+import { EnhancedArticleCard, type ArticleCardData } from '@/components/article/EnhancedArticleCard';
+import { getProfile, getDisplayName, toAddressString } from '@/lib/profiles';
 
 // Disable static generation for this page (requires IPFS/Arweave client-side)
 export const dynamic = 'force-dynamic';
@@ -183,6 +183,32 @@ function sortPosts(
   return sorted.map((item) => item.post);
 }
 
+/**
+ * Converts a VerifiedPost to ArticleCardData for EnhancedArticleCard
+ */
+function toArticleCardData(post: VerifiedPost): ArticleCardData {
+  const authorAddress = toAddressString(post.author);
+  const profile = getProfile(authorAddress);
+
+  return {
+    id: post.id,
+    slug: post.id, // Using ID as slug for now
+    title: post.title,
+    excerpt: post.excerpt,
+    coverImage: post.coverImage,
+    tags: post.tags ?? [],
+    author: {
+      address: authorAddress,
+      displayName: getDisplayName(post.author, profile),
+      avatar: profile?.avatar,
+    },
+    createdAt: Math.floor(post.createdAt.getTime() / 1000),
+    readTime: post.readingTimeMinutes,
+    isPaid: post.isPaid,
+    price: post.price,
+  };
+}
+
 function HomeContent() {
   const { posts, isLoading, error } = usePosts(100, 0);
   const [filters, setFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
@@ -322,84 +348,12 @@ function HomeContent() {
           </div>
         ) : (
           <div className="grid gap-4 sm:gap-6 lg:gap-8 sm:grid-cols-2 lg:grid-cols-3">
-            {paginatedPosts.map((post) => (
-              <article
+            {paginatedPosts.map((post, index) => (
+              <EnhancedArticleCard
                 key={post.id}
-                className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden hover:shadow-lg dark:hover:shadow-gray-800 transition-shadow bg-white dark:bg-gray-800 active:scale-[0.98] touch-manipulation card-hover"
-              >
-                {post.coverImage && (
-                  <img
-                    src={post.coverImage}
-                    alt={post.title}
-                    className="w-full h-40 sm:h-48 object-cover"
-                  />
-                )}
-                <div className="p-4 sm:p-6">
-                  <div className="flex flex-wrap gap-1.5 sm:gap-2 mb-2 sm:mb-3">
-                    {(post.tags ?? []).slice(0, 3).map((tag) => (
-                      <span
-                        key={tag}
-                        className="px-2 py-0.5 sm:py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-
-                  <Link href={`/articles/${post.id}`}>
-                    <h2 className="text-xl sm:text-2xl font-bold mb-2 hover:text-blue-600 dark:hover:text-blue-400 line-clamp-2">
-                      {post.title}
-                    </h2>
-                  </Link>
-
-                  <p className="text-gray-600 dark:text-gray-400 mb-3 sm:mb-4 line-clamp-2 sm:line-clamp-3 text-sm sm:text-base">
-                    {post.excerpt}
-                  </p>
-
-                  {/* Author */}
-                  {post.author && (
-                    <div className="mb-2">
-                      <AuthorDisplay
-                        address={post.author}
-                        size="xs"
-                        showAvatar={true}
-                        linkToProfile={true}
-                      />
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-                    <div className="flex items-center gap-2">
-                      <time dateTime={post.createdAt.toISOString()}>
-                        {format(post.createdAt, 'MMM d, yyyy')}
-                      </time>
-                      {post.isVerified && (
-                        <span className="inline-flex items-center text-green-600 dark:text-green-400" title="Content verified">
-                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                            <path
-                              fillRule="evenodd"
-                              d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        </span>
-                      )}
-                    </div>
-
-                    {post.isPaid && (
-                      <span className="px-2 py-0.5 sm:py-1 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 rounded text-xs">
-                        {post.price} STRK
-                      </span>
-                    )}
-                  </div>
-
-                  {post.readingTimeMinutes && (
-                    <p className="mt-2 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-                      {post.readingTimeMinutes} min read
-                    </p>
-                  )}
-                </div>
-              </article>
+                article={toArticleCardData(post)}
+                index={index}
+              />
             ))}
           </div>
         )}

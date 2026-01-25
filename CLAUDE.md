@@ -434,3 +434,51 @@ When navigating the codebase, start with these files:
 4. `packages/shared-types/src/post.ts` - Data schemas
 5. `docker/docker-compose.yml` - Infrastructure services
 6. `contracts/scripts/deploy.sh` - Deployment automation
+
+## Kubernetes (k3s) Deployment Notes
+
+### Scheduled Posts CronJob
+
+The scheduled post publishing requires a Kubernetes CronJob to trigger the endpoint periodically.
+This is NOT yet implemented - add to `k8s/k8s/frontend/` when deploying:
+
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: publish-scheduled-posts
+  namespace: vauban
+spec:
+  schedule: "* * * * *"  # Every minute
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: curl
+            image: curlimages/curl:8.5.0
+            command:
+            - /bin/sh
+            - -c
+            - |
+              curl -sf -H "Authorization: Bearer ${CRON_SECRET}" \
+                "http://frontend-service.vauban.svc.cluster.local:3005/api/cron/publish-scheduled"
+            env:
+            - name: CRON_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: vauban-secrets
+                  key: cron-secret
+          restartPolicy: OnFailure
+```
+
+### AI Providers
+
+For production, prefer OpenRouter with free models:
+- **google/gemini-2.5-flash-lite:free** - Fastest, good for tags/titles
+- **google/gemini-2.5-flash:free** - Balanced, content generation
+- **meta-llama/llama-3.3-70b-instruct:free** - Highest quality, heavy tasks
+- **deepseek/deepseek-chat:free** - Good French support, alternative

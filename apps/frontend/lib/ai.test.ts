@@ -42,6 +42,16 @@ vi.mock('./ai-providers', () => ({
       apiKeyEnvVar: 'NEXT_PUBLIC_GROQ_API_KEY',
       commercial: false,
     },
+    openrouter: {
+      name: 'OpenRouter',
+      models: ['google/gemini-2.5-flash-lite:free'],
+      baseUrl: 'https://openrouter.ai/api/v1',
+      latency: '~100-500ms',
+      free: 'Illimité',
+      requiresApiKey: true,
+      apiKeyEnvVar: 'NEXT_PUBLIC_OPENROUTER_API_KEY',
+      commercial: true,
+    },
     localai: {
       name: 'LocalAI',
       models: ['phi-3-mini', 'gemma-2b', 'qwen2-1.5b', 'tinyllama', 'mistral', 'llama3-8b'],
@@ -55,6 +65,10 @@ vi.mock('./ai-providers', () => ({
   },
   getTextProviderApiKey: vi.fn(() => null),
   isTextProviderAvailable: vi.fn(() => true),
+  getBestModelForTask: vi.fn(() => Promise.resolve({ model: 'mistral', isOptimal: true })),
+  getTaskTypeForAction: vi.fn(() => 'medium'),
+  getOpenRouterModelForTask: vi.fn(() => 'google/gemini-2.5-flash-lite:free'),
+  getAvailableFallbackProviders: vi.fn(() => []), // Return empty array to disable fallback in tests
 }));
 
 // Mock fetch globally

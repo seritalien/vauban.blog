@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface TocItem {
   id: string;
@@ -98,27 +99,35 @@ export default function TableOfContents({ content }: TableOfContentsProps) {
         </svg>
       </button>
 
-      {!isCollapsed && (
-        <ul className="mt-3 space-y-1">
-          {headings.map(({ id, text, level }) => (
-            <li
-              key={id}
-              style={{ paddingLeft: `${(level - 2) * 12}px` }}
-            >
-              <button
-                onClick={() => scrollToHeading(id)}
-                className={`block w-full text-left py-1 text-sm transition-colors ${
-                  activeId === id
-                    ? 'text-blue-600 dark:text-blue-400 font-medium'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-                }`}
+      <AnimatePresence>
+        {!isCollapsed && (
+          <motion.ul
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="mt-3 space-y-1 overflow-hidden"
+          >
+            {headings.map(({ id, text, level }) => (
+              <li
+                key={id}
+                style={{ paddingLeft: `${(level - 2) * 12}px` }}
               >
-                {text}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+                <button
+                  onClick={() => scrollToHeading(id)}
+                  className={`block w-full text-left py-1 text-sm transition-colors ${
+                    activeId === id
+                      ? 'text-purple-600 dark:text-purple-400 font-medium'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                  }`}
+                >
+                  {text}
+                </button>
+              </li>
+            ))}
+          </motion.ul>
+        )}
+      </AnimatePresence>
     </nav>
   );
 }
@@ -172,24 +181,35 @@ export function TableOfContentsSidebar({ content }: TableOfContentsProps) {
       <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-3">
         On this page
       </h2>
-      <ul className="space-y-2 border-l border-gray-200 dark:border-gray-700">
-        {headings.map(({ id, text, level }) => (
-          <li
-            key={id}
-            style={{ paddingLeft: `${(level - 2) * 12 + 12}px` }}
-          >
-            <button
-              onClick={() => scrollToHeading(id)}
-              className={`block w-full text-left py-1 text-sm transition-colors border-l-2 -ml-[2px] ${
-                activeId === id
-                  ? 'text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-400 font-medium'
-                  : 'text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-900 dark:hover:text-white hover:border-gray-300 dark:hover:border-gray-500'
-              }`}
+      <ul className="space-y-1 border-l border-gray-200 dark:border-gray-700">
+        {headings.map(({ id, text, level }) => {
+          const isActive = activeId === id;
+          return (
+            <li
+              key={id}
+              style={{ paddingLeft: `${(level - 2) * 12 + 12}px` }}
+              className="relative"
             >
-              {text}
-            </button>
-          </li>
-        ))}
+              {isActive && (
+                <motion.span
+                  layoutId="toc-active-indicator"
+                  className="absolute left-0 top-0 bottom-0 w-0.5 bg-purple-600 dark:bg-purple-400 rounded-full"
+                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                />
+              )}
+              <button
+                onClick={() => scrollToHeading(id)}
+                className={`block w-full text-left py-1.5 text-sm transition-colors border-l-2 -ml-[2px] ${
+                  isActive
+                    ? 'text-purple-600 dark:text-purple-400 border-transparent font-medium'
+                    : 'text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-900 dark:hover:text-white hover:border-gray-300 dark:hover:border-gray-500'
+                }`}
+              >
+                {text}
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </nav>
   );

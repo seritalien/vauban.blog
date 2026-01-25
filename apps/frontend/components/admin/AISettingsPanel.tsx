@@ -17,6 +17,7 @@ import {
   type AIConfig,
   getAIConfig,
   setAIConfig,
+  resetAIConfig,
   subscribeToConfigChanges,
 } from '@/lib/ai-config';
 import { testProviderConnection } from '@/lib/ai';
@@ -167,6 +168,16 @@ export const AISettingsPanel: FC<AISettingsPanelProps> = ({ isOpen, onClose }) =
     setHasChanges(false);
   }, [config]);
 
+  // Reset to defaults
+  const handleReset = useCallback(() => {
+    const defaultConfig = resetAIConfig();
+    setConfigState(defaultConfig);
+    setHasChanges(false);
+    setTextTestResult({ status: 'idle' });
+    setImageTestResult({ status: 'idle' });
+    setImagePreview(null);
+  }, []);
+
   if (!isOpen) return null;
 
   return (
@@ -237,8 +248,79 @@ export const AISettingsPanel: FC<AISettingsPanelProps> = ({ isOpen, onClose }) =
               })}
             </div>
 
-            {/* Model selection - Dynamic for LocalAI */}
-            {config.textProvider === 'localai' ? (
+            {/* Model selection - Dynamic for LocalAI and OpenRouter */}
+            {config.textProvider === 'openrouter' ? (
+              <div className="space-y-3">
+                {/* Auto mode info for OpenRouter */}
+                <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                  <div className="flex items-center gap-2 text-green-700 dark:text-green-300 font-medium text-sm">
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                    Mode automatique activé
+                  </div>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                    Le meilleur modèle gratuit est sélectionné selon la tâche:
+                  </p>
+                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-2 space-y-1">
+                    <div><strong>Toutes tâches</strong> → gemini-2.0-flash-exp:free (rapide, gratuit)</div>
+                    <div className="text-green-600 dark:text-green-400">✓ 100% gratuit - aucun coût</div>
+                  </div>
+                </div>
+
+                {/* Comparison with LocalAI */}
+                <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg text-xs">
+                  <div className="font-medium text-purple-700 dark:text-purple-300 mb-1">
+                    ⚡ 50-300x plus rapide que LocalAI
+                  </div>
+                  <div className="text-gray-600 dark:text-gray-400">
+                    OpenRouter: ~100-500ms | LocalAI: ~5-30s
+                  </div>
+                </div>
+
+                {/* Manual model override */}
+                <div className="flex items-center gap-3">
+                  <label className="text-sm font-medium">Modèle par défaut:</label>
+                  <select
+                    value={config.textModel}
+                    onChange={(e) => handleTextModelChange(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg dark:bg-gray-800 text-sm"
+                  >
+                    {TEXT_PROVIDERS.openrouter.models.map((model) => (
+                      <option key={model} value={model}>
+                        {model.replace(':free', ' (gratuit)')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Test button */}
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleTestTextProvider}
+                    disabled={textTestResult.status === 'testing'}
+                    className={cn(
+                      'px-4 py-2 rounded-lg font-medium transition-colors',
+                      textTestResult.status === 'testing'
+                        ? 'bg-gray-200 dark:bg-gray-700 cursor-wait'
+                        : 'bg-purple-600 hover:bg-purple-700 text-white'
+                    )}
+                  >
+                    {textTestResult.status === 'testing' ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Test...
+                      </span>
+                    ) : (
+                      'Tester'
+                    )}
+                  </button>
+                </div>
+              </div>
+            ) : config.textProvider === 'localai' ? (
               <div className="space-y-3">
                 {/* Auto mode toggle */}
                 <div className="flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
@@ -562,10 +644,24 @@ export const AISettingsPanel: FC<AISettingsPanelProps> = ({ isOpen, onClose }) =
                 </a>
               </div>
               <div className="flex items-center gap-2">
+                <span className="text-blue-600">NEXT_PUBLIC_HUGGINGFACE_API_KEY</span>
+                <span className="text-gray-400">-</span>
+                <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                  huggingface.co (gratuit, images FLUX)
+                </a>
+              </div>
+              <div className="flex items-center gap-2">
                 <span className="text-blue-600">NEXT_PUBLIC_TOGETHER_API_KEY</span>
                 <span className="text-gray-400">-</span>
                 <a href="https://api.together.xyz" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
                   api.together.xyz
+                </a>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-blue-600">NEXT_PUBLIC_POLLINATIONS_API_KEY</span>
+                <span className="text-gray-400">-</span>
+                <a href="https://enter.pollinations.ai" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                  enter.pollinations.ai
                 </a>
               </div>
             </div>
@@ -573,25 +669,33 @@ export const AISettingsPanel: FC<AISettingsPanelProps> = ({ isOpen, onClose }) =
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 dark:border-gray-700">
           <button
-            onClick={onClose}
-            className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+            onClick={handleReset}
+            className="px-4 py-2 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-colors text-sm"
           >
-            Annuler
+            Réinitialiser par défaut
           </button>
-          <button
-            onClick={handleSave}
-            disabled={!hasChanges}
-            className={cn(
-              'px-4 py-2 rounded-lg font-medium transition-colors',
-              hasChanges
-                ? 'bg-green-600 hover:bg-green-700 text-white'
-                : 'bg-gray-200 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
-            )}
-          >
-            Sauvegarder
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={!hasChanges}
+              className={cn(
+                'px-4 py-2 rounded-lg font-medium transition-colors',
+                hasChanges
+                  ? 'bg-green-600 hover:bg-green-700 text-white'
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
+              )}
+            >
+              Sauvegarder
+            </button>
+          </div>
         </div>
       </div>
     </div>
