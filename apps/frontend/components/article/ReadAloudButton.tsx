@@ -1,70 +1,83 @@
 'use client';
 
-import { useState, useCallback, useEffect, type FC } from 'react';
+import { useState, useCallback, useEffect, useRef, type FC } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { readArticleAloud, stopSpeech, getBrowserVoices } from '@/lib/ai-tts';
+import { readArticleAloud, stopSpeech, getBrowserVoices, textToSpeechServer } from '@/lib/ai-tts';
 
 interface ReadAloudButtonProps {
   content: string;
   className?: string;
+  /** Callback when the currently read sentence changes */
+  onSentenceChange?: (index: number, total: number) => void;
 }
 
+type TTSMode = 'browser' | 'server' | 'none';
+
 /**
- * Accessibility button to read article content aloud using browser TTS.
- * Shows progress and controls for pause/resume/stop.
+ * Accessibility button to read article content aloud.
+ * Uses browser TTS if available, falls back to server-side Hugging Face TTS.
  */
-export const ReadAloudButton: FC<ReadAloudButtonProps> = ({ content, className = '' }) => {
+export const ReadAloudButton: FC<ReadAloudButtonProps> = ({ content, className = '', onSentenceChange }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [totalSentences, setTotalSentences] = useState(0);
   const [controls, setControls] = useState<ReturnType<typeof readArticleAloud> | null>(null);
   const [speed, setSpeed] = useState(1.0);
   const [error, setError] = useState<string | null>(null);
-  const [hasVoices, setHasVoices] = useState<boolean | null>(null);
+  const [ttsMode, setTtsMode] = useState<TTSMode>('none');
 
-  // Check for voice availability on mount
+  // Audio element ref for server-side TTS
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const currentSentenceRef = useRef(0);
+  const sentencesRef = useRef<string[]>([]);
+  const stoppedRef = useRef(false);
+
+  // Check for TTS availability on mount
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      // Check voices multiple times - some browsers load them asynchronously
+    if (typeof window !== 'undefined') {
+      // Check browser voices multiple times
       let attempts = 0;
       const maxAttempts = 5;
 
       const checkVoices = () => {
         const voices = getBrowserVoices();
         if (voices.length > 0) {
-          setHasVoices(true);
-          console.log(`[TTS] Found ${voices.length} voices`);
+          setTtsMode('browser');
+          console.log(`[TTS] Using browser TTS (${voices.length} voices)`);
         } else {
           attempts++;
           if (attempts < maxAttempts) {
-            // Try again after delay
             setTimeout(checkVoices, 500);
           } else {
-            // Final check - Brave/some browsers may need voiceschanged event
-            setHasVoices(false);
-            console.log('[TTS] No voices found after multiple attempts');
+            // No browser voices, use server TTS
+            setTtsMode('server');
+            console.log('[TTS] No browser voices, using server TTS');
           }
         }
       };
 
-      // Also listen for voiceschanged event
+      // Listen for voiceschanged event
       const handleVoicesChanged = () => {
         const voices = getBrowserVoices();
         if (voices.length > 0) {
-          setHasVoices(true);
-          console.log(`[TTS] Voices loaded via event: ${voices.length}`);
+          setTtsMode('browser');
+          console.log(`[TTS] Browser voices loaded: ${voices.length}`);
         }
       };
 
-      window.speechSynthesis.addEventListener('voiceschanged', handleVoicesChanged);
-      setTimeout(checkVoices, 100);
+      if (window.speechSynthesis) {
+        window.speechSynthesis.addEventListener('voiceschanged', handleVoicesChanged);
+        setTimeout(checkVoices, 100);
 
-      return () => {
-        window.speechSynthesis.removeEventListener('voiceschanged', handleVoicesChanged);
-      };
-    } else {
-      setHasVoices(false);
+        return () => {
+          window.speechSynthesis.removeEventListener('voiceschanged', handleVoicesChanged);
+        };
+      } else {
+        // No speechSynthesis API, use server
+        setTtsMode('server');
+      }
     }
   }, []);
 
@@ -72,72 +85,175 @@ export const ReadAloudButton: FC<ReadAloudButtonProps> = ({ content, className =
   useEffect(() => {
     return () => {
       stopSpeech();
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
     };
   }, []);
 
+  // Clean content for TTS
+  const cleanContent = useCallback((text: string) => {
+    return text
+      .replace(/<[^>]*>/g, '') // Remove HTML tags
+      .replace(/```[\s\S]*?```/g, '') // Remove code blocks
+      .replace(/`[^`]+`/g, '') // Remove inline code
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Convert links to text
+      .replace(/[#*_~]/g, '') // Remove markdown formatting
+      .replace(/\n{2,}/g, '. ') // Convert double newlines to pauses
+      .replace(/\n/g, ' ') // Convert single newlines to spaces
+      .trim();
+  }, []);
+
+  // Play next sentence using server TTS
+  const playNextServerSentence = useCallback(async () => {
+    if (stoppedRef.current || currentSentenceRef.current >= sentencesRef.current.length) {
+      setIsPlaying(false);
+      setProgress(0);
+      currentSentenceRef.current = 0;
+      return;
+    }
+
+    const sentence = sentencesRef.current[currentSentenceRef.current];
+    if (!sentence.trim()) {
+      currentSentenceRef.current++;
+      setProgress(currentSentenceRef.current);
+      playNextServerSentence();
+      return;
+    }
+
+    setIsLoading(true);
+    const result = await textToSpeechServer(sentence, 'fr');
+    setIsLoading(false);
+
+    if (!result.success) {
+      setError(result.error);
+      setIsPlaying(false);
+      return;
+    }
+
+    if (stoppedRef.current) {
+      URL.revokeObjectURL(result.audioUrl);
+      return;
+    }
+
+    // Create audio element and play
+    const audio = new Audio(result.audioUrl);
+    audio.playbackRate = speed;
+    audioRef.current = audio;
+
+    audio.onended = () => {
+      URL.revokeObjectURL(result.audioUrl);
+      currentSentenceRef.current++;
+      setProgress(currentSentenceRef.current);
+      onSentenceChange?.(currentSentenceRef.current, sentencesRef.current.length);
+      playNextServerSentence();
+    };
+
+    audio.onerror = () => {
+      URL.revokeObjectURL(result.audioUrl);
+      currentSentenceRef.current++;
+      playNextServerSentence();
+    };
+
+    // Notify current sentence before playing
+    onSentenceChange?.(currentSentenceRef.current, sentencesRef.current.length);
+
+    audio.play().catch((err) => {
+      console.error('[TTS] Audio play error:', err);
+      setError('Erreur de lecture audio');
+      setIsPlaying(false);
+    });
+  }, [speed, onSentenceChange]);
+
   const handlePlay = useCallback(() => {
-    // Clear any previous error
     setError(null);
 
     if (isPlaying) {
       // Stop
+      stoppedRef.current = true;
       controls?.stop();
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
       setIsPlaying(false);
       setIsPaused(false);
       setProgress(0);
       setControls(null);
+      currentSentenceRef.current = 0;
+      onSentenceChange?.(-1, totalSentences); // Signal stop with -1
     } else {
-      // Check for voice availability
-      if (hasVoices === false) {
-        setError('Pas de voix TTS disponibles. Installez des voix dans votre système.');
-        return;
-      }
-
       // Start
-      const ctrl = readArticleAloud(content, {
-        lang: 'fr-FR',
-        rate: speed,
-        onProgress: (index, total) => {
-          setProgress(index);
-          setTotalSentences(total);
-          if (index >= total) {
-            setIsPlaying(false);
-            setIsPaused(false);
-            setProgress(0);
-            setControls(null);
-          }
-        },
-      });
-      setControls(ctrl);
-      setIsPlaying(true);
-      setIsPaused(false);
-
-      // Estimate total sentences for progress
-      const cleanText = content.replace(/<[^>]*>/g, '').replace(/```[\s\S]*?```/g, '');
+      stoppedRef.current = false;
+      const cleanText = cleanContent(content);
       const sentences = cleanText.match(/[^.!?]+[.!?]+/g) || [cleanText];
+      sentencesRef.current = sentences;
       setTotalSentences(sentences.length);
+
+      if (ttsMode === 'browser') {
+        // Use browser TTS
+        const ctrl = readArticleAloud(content, {
+          lang: 'fr-FR',
+          rate: speed,
+          onProgress: (index, total) => {
+            setProgress(index);
+            setTotalSentences(total);
+            onSentenceChange?.(index, total);
+            if (index >= total) {
+              setIsPlaying(false);
+              setIsPaused(false);
+              setProgress(0);
+              setControls(null);
+              onSentenceChange?.(-1, total); // Signal end with -1
+            }
+          },
+        });
+        setControls(ctrl);
+        setIsPlaying(true);
+        setIsPaused(false);
+      } else if (ttsMode === 'server') {
+        // Use server-side TTS (for browsers without native TTS like Brave)
+        setIsPlaying(true);
+        setIsPaused(false);
+        playNextServerSentence();
+      } else {
+        // No TTS available - show helpful error
+        setError('TTS indisponible. Utilisez Chrome ou Firefox.');
+      }
     }
-  }, [content, controls, hasVoices, isPlaying, speed]);
+  }, [content, controls, isPlaying, speed, ttsMode, totalSentences, cleanContent, playNextServerSentence, onSentenceChange]);
 
   const handlePauseResume = useCallback(() => {
-    if (isPaused) {
-      controls?.resume();
-      setIsPaused(false);
-    } else {
-      controls?.pause();
-      setIsPaused(true);
+    if (ttsMode === 'browser') {
+      if (isPaused) {
+        controls?.resume();
+        setIsPaused(false);
+      } else {
+        controls?.pause();
+        setIsPaused(true);
+      }
+    } else if (ttsMode === 'server' && audioRef.current) {
+      if (isPaused) {
+        audioRef.current.play();
+        setIsPaused(false);
+      } else {
+        audioRef.current.pause();
+        setIsPaused(true);
+      }
     }
-  }, [controls, isPaused]);
+  }, [controls, isPaused, ttsMode]);
 
   const progressPercent = totalSentences > 0 ? (progress / totalSentences) * 100 : 0;
 
   return (
-    <div className={`inline-flex items-center gap-2 ${className}`}>
+    <div className={`inline-flex items-center gap-2 flex-wrap ${className}`}>
       {/* Main play/stop button */}
       <motion.button
         onClick={handlePlay}
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
+        disabled={isLoading}
         className={`
           relative flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium
           transition-colors overflow-hidden
@@ -145,8 +261,9 @@ export const ReadAloudButton: FC<ReadAloudButtonProps> = ({ content, className =
             ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50'
             : 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/50'
           }
+          ${isLoading ? 'opacity-70 cursor-wait' : ''}
         `}
-        title={isPlaying ? 'Stop reading' : 'Read article aloud'}
+        title={isPlaying ? 'Stop reading' : `Read article aloud (${ttsMode === 'server' ? 'AI' : 'Browser'})`}
       >
         {/* Progress bar background */}
         {isPlaying && (
@@ -160,7 +277,12 @@ export const ReadAloudButton: FC<ReadAloudButtonProps> = ({ content, className =
 
         {/* Icon */}
         <span className="relative z-10">
-          {isPlaying ? (
+          {isLoading ? (
+            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          ) : isPlaying ? (
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -173,13 +295,13 @@ export const ReadAloudButton: FC<ReadAloudButtonProps> = ({ content, className =
 
         {/* Label */}
         <span className="relative z-10">
-          {isPlaying ? 'Stop' : 'Listen'}
+          {isPlaying ? 'Stop' : 'Écouter'}
         </span>
       </motion.button>
 
       {/* Pause/Resume button (only when playing) */}
       <AnimatePresence>
-        {isPlaying && (
+        {isPlaying && !isLoading && (
           <motion.button
             initial={{ opacity: 0, scale: 0.8, x: -10 }}
             animate={{ opacity: 1, scale: 1, x: 0 }}
@@ -217,10 +339,10 @@ export const ReadAloudButton: FC<ReadAloudButtonProps> = ({ content, className =
         )}
       </AnimatePresence>
 
-      {/* Speed control (always visible) */}
+      {/* Speed control */}
       <div className="flex items-center gap-2">
         <label htmlFor="speed-control" className="text-xs text-gray-500 dark:text-gray-400">
-          Speed:
+          Vitesse:
         </label>
         <input
           id="speed-control"
@@ -252,16 +374,6 @@ export const ReadAloudButton: FC<ReadAloudButtonProps> = ({ content, className =
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* No voices warning */}
-      {hasVoices === false && !error && (
-        <span
-          className="text-xs text-orange-600 dark:text-orange-400 cursor-help"
-          title="TTS non disponible. Sur Linux: installez speech-dispatcher et espeak-ng. Brave browser a un support TTS limité - essayez Chrome/Firefox."
-        >
-          ⚠️ TTS indisponible
-        </span>
-      )}
     </div>
   );
 };

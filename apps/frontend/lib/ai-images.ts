@@ -206,7 +206,7 @@ async function generateWithProvider(
 
 /**
  * Generate an image using the configured provider
- * Automatically falls back to other providers on failure
+ * No automatic fallback to avoid confusion - returns error directly
  */
 export async function generateImage(
   prompt: string,
@@ -222,6 +222,8 @@ export async function generateImage(
     model = model ?? config.imageModel;
   }
 
+  console.log(`[AI Images] Generating with ${provider}, model: ${model || 'default'}`);
+
   // Check if provider is available
   if (!isImageProviderAvailable(provider)) {
     // Try to find an available fallback
@@ -229,47 +231,21 @@ export async function generateImage(
     const availableFallback = fallbacks.find(isImageProviderAvailable);
 
     if (availableFallback) {
-      console.log(`[AI Images] Primary provider ${provider} not available, using fallback: ${availableFallback}`);
+      console.log(`[AI Images] Primary provider ${provider} not available, using: ${availableFallback}`);
       provider = availableFallback;
       model = undefined; // Let fallback use its default model
     } else {
       return {
         success: false,
-        error: `Aucun provider d'images configuré. Ajoutez NEXT_PUBLIC_HUGGINGFACE_API_KEY, NEXT_PUBLIC_TOGETHER_API_KEY ou NEXT_PUBLIC_POLLINATIONS_API_KEY dans .env.local`,
+        error: `Aucun provider d'images configuré. Ajoutez NEXT_PUBLIC_HUGGINGFACE_API_KEY dans .env.local`,
         code: 'NO_PROVIDER',
       };
     }
   }
 
-  // Try primary provider
+  // Try provider (no automatic fallback to avoid loops)
   const result = await generateWithProvider(provider, prompt, { ...options, model });
-
-  // If successful or user explicitly specified provider, return
-  if (result.success || options.provider) {
-    return result;
-  }
-
-  // On failure, try fallback providers
-  const fallbacks = IMAGE_PROVIDER_FALLBACK[provider] ?? [];
-  const availableFallbacks = fallbacks.filter(isImageProviderAvailable);
-
-  for (const fallback of availableFallbacks) {
-    console.log(`[AI Images] Provider ${provider} failed, trying fallback: ${fallback}`);
-    const fallbackResult = await generateWithProvider(fallback, prompt, {
-      ...options,
-      model: undefined, // Use fallback's default model
-    });
-
-    if (fallbackResult.success) {
-      return fallbackResult;
-    }
-  }
-
-  // All providers failed
-  return {
-    ...result,
-    error: `${result.error} (fallbacks also failed)`,
-  };
+  return result;
 }
 
 /**

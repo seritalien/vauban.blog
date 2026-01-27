@@ -1,16 +1,4 @@
-# Starknet Foundry configuration
-# https://foundry-rs.github.io/starknet-foundry/appendix/snfoundry-toml.html
-
-[snforge]
-exit_first = true
-
-# Test output settings
-[snforge.output]
-# Show detailed output for each test
-detailed = true
-
-# sncast configuration for Madara devnet
-[sncast.madara]
+[sncast.default]
 url = "http://localhost:9944"
-account = "dev1"
-accounts_file = "accounts/sncast_accounts.json"
+account = "deployer"
+accounts-file = "accounts.json"

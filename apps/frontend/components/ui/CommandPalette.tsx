@@ -5,17 +5,13 @@ import {
   useEffect,
   useCallback,
   useRef,
-  useMemo,
   type FC,
   type KeyboardEvent,
 } from 'react';
 import { useRouter } from 'next/navigation';
 import { Dialog, DialogPanel, DialogBackdrop } from '@headlessui/react';
 import { motion, AnimatePresence } from 'framer-motion';
-import Fuse from 'fuse.js';
-import { useAllArticles } from '@/hooks/useArticles';
 import { useTheme } from '@/providers/theme-provider';
-import { performAIAction } from '@/lib/ai';
 
 interface Command {
   id: string;
@@ -49,8 +45,7 @@ export const CommandPalette: FC<CommandPaletteProps> = ({
   onAIAction,
 }) => {
   const router = useRouter();
-  const { theme, setTheme, resolvedTheme } = useTheme();
-  const { articles, isLoading: articlesLoading } = useAllArticles();
+  const { setTheme, resolvedTheme } = useTheme();
 
   const toggleTheme = () => {
     setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
@@ -59,17 +54,6 @@ export const CommandPalette: FC<CommandPaletteProps> = ({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  // Fuse.js configuration for fuzzy search
-  const fuse = useMemo(() => {
-    if (!articles || articles.length === 0) return null;
-
-    return new Fuse(articles, {
-      keys: ['title', 'excerpt', 'tags'],
-      threshold: 0.3,
-      includeScore: true,
-    });
-  }, [articles]);
 
   // Navigation commands
   const navigationCommands: Command[] = [
@@ -215,34 +199,14 @@ export const CommandPalette: FC<CommandPaletteProps> = ({
 
   const allCommands = [...defaultCommands, ...customCommands];
 
-  // Fuzzy search for articles (only when query exists and is search-like)
-  const articleResults = useMemo(() => {
-    if (!query || !fuse) return [];
-
-    const results = fuse.search(query).slice(0, 5); // Top 5 results
-    return results.map((result) => ({
-      id: `article-${result.item.id}`,
-      name: result.item.title,
-      description: result.item.excerpt || result.item.tags?.join(', '),
-      icon: '📰',
-      action: () => router.push(`/articles/${result.item.slug || result.item.id}`),
-      category: 'Search Results',
-    }));
-  }, [query, fuse, router]);
-
   // Filter commands by query
-  const filteredDefaultCommands = query
+  const filteredCommands = query
     ? allCommands.filter(
         (cmd) =>
           cmd.name.toLowerCase().includes(query.toLowerCase()) ||
           cmd.description?.toLowerCase().includes(query.toLowerCase())
       )
     : allCommands;
-
-  // Combine article search results and commands
-  const filteredCommands = query && articleResults.length > 0
-    ? [...articleResults, ...filteredDefaultCommands]
-    : filteredDefaultCommands;
 
   // Group commands by category
   const groupedCommands = filteredCommands.reduce(

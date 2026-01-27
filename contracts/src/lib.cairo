@@ -5,3 +5,4 @@ mod session_key_manager;
 mod role_registry;
 mod treasury;
 mod reputation;
+mod follows;

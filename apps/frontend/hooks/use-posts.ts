@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { PostOutput } from '@vauban/shared-types';
 import { getPosts, getPost, initStarknetProvider, setContractAddresses, calculateContentHash } from '@vauban/web3-utils';
+import { queryKeys } from '@/lib/query-keys';
 
 // Extended post type with verification status
 export interface VerifiedPost extends PostOutput {
@@ -60,6 +61,20 @@ async function verifyContentHash(content: unknown, onchainHash: string): Promise
   return computedHash.toLowerCase() === onchainHex.toLowerCase();
 }
 
+// Content fetch cache to deduplicate in-flight requests for the same CID
+const contentCache = new Map<string, Promise<{ data: unknown; rawJson: string }>>();
+
+function fetchFromIPFSProxyCached(cid: string): Promise<{ data: unknown; rawJson: string }> {
+  const existing = contentCache.get(cid);
+  if (existing) return existing;
+  const promise = fetchFromIPFSProxy(cid).finally(() => {
+    // Remove from cache after completion so stale entries don't persist
+    contentCache.delete(cid);
+  });
+  contentCache.set(cid, promise);
+  return promise;
+}
+
 // Initialize provider and contract addresses with Next.js env vars
 // (must be done in frontend context where env vars are available)
 if (typeof window !== 'undefined') {
@@ -76,161 +91,146 @@ if (typeof window !== 'undefined') {
   });
 }
 
-export function usePosts(limit: number = 10, offset: number = 0) {
-  const [posts, setPosts] = useState<VerifiedPost[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export async function fetchPostContent(meta: { id: string; author: string | number; ipfsCid: string; arweaveTxId: string; contentHash: string; createdAt: number; updatedAt: number; postType?: number; parentId?: string; threadRootId?: string; isPinned?: boolean }): Promise<VerifiedPost> {
+  let content: unknown;
+  let isVerified = false;
+  let verificationError: string | undefined;
 
-  useEffect(() => {
-    async function loadPosts() {
-      try {
-        setIsLoading(true);
-        setError(null);
+  // Try IPFS first (with dedup cache), then Arweave as fallback, then placeholder for test data
+  try {
+    const { data } = await fetchFromIPFSProxyCached(meta.ipfsCid);
+    content = data;
 
-        const postMetadata = await getPosts(limit, offset);
+    // Verify content hash
+    isVerified = await verifyContentHash(data, meta.contentHash);
+    if (!isVerified) {
+      verificationError = 'Content hash mismatch';
+    }
+  } catch (ipfsErr) {
+    console.warn(`IPFS failed for post ${meta.id}, trying Arweave...`);
+    try {
+      const { data } = await fetchFromArweave(meta.arweaveTxId);
+      content = data;
+      isVerified = await verifyContentHash(data, meta.contentHash);
+      if (!isVerified) {
+        verificationError = 'Content hash mismatch';
+      }
+    } catch (arweaveErr) {
+      // Use placeholder content for test posts
+      console.warn(`Using placeholder for test post ${meta.id}`);
+      const { data } = generatePlaceholderContent(meta.id);
+      content = data;
+      isVerified = false;
+      verificationError = 'Test post - content not stored';
+    }
+  }
 
-        const postsWithContent = await Promise.all(
-          postMetadata
-            .filter(meta => !meta.isDeleted)
-            .map(async (meta) => {
-              let content: unknown;
-              let isVerified = false;
-              let verificationError: string | undefined;
+  return {
+    ...content as object,
+    id: meta.id,
+    author: meta.author,
+    arweaveTxId: meta.arweaveTxId,
+    ipfsCid: meta.ipfsCid,
+    contentHash: meta.contentHash,
+    createdAt: new Date(meta.createdAt * 1000),
+    updatedAt: new Date(meta.updatedAt * 1000),
+    postType: meta.postType,
+    parentId: meta.parentId,
+    threadRootId: meta.threadRootId,
+    isPinned: meta.isPinned,
+    isVerified,
+    verificationError,
+  } as VerifiedPost;
+}
 
-              // Try IPFS first, then Arweave as fallback, then placeholder for test data
-              try {
-                const { data } = await fetchFromIPFSProxy(meta.ipfsCid);
-                content = data;
+/**
+ * Fetch a page of posts with their content resolved.
+ * Exported for prefetch use by other components.
+ */
+async function fetchPostsPage(limit: number, offset: number): Promise<VerifiedPost[]> {
+  const postMetadata = await getPosts(limit, offset);
 
-                // Verify content hash
-                isVerified = await verifyContentHash(data, meta.contentHash);
-                if (!isVerified) {
-                  verificationError = 'Content hash mismatch';
-                }
-              } catch (ipfsErr) {
-                console.warn(`IPFS failed for post ${meta.id}, trying Arweave...`);
-                try {
-                  const { data } = await fetchFromArweave(meta.arweaveTxId);
-                  content = data;
-                  isVerified = await verifyContentHash(data, meta.contentHash);
-                  if (!isVerified) {
-                    verificationError = 'Content hash mismatch';
-                  }
-                } catch (arweaveErr) {
-                  // Use placeholder content for test posts
-                  console.warn(`Using placeholder for test post ${meta.id}`);
-                  const { data } = generatePlaceholderContent(meta.id);
-                  content = data;
-                  isVerified = false;
-                  verificationError = 'Test post - content not stored';
-                }
-              }
+  const postsWithContent = await Promise.all(
+    postMetadata
+      .filter(meta => !meta.isDeleted)
+      .map(fetchPostContent)
+  );
 
-              return {
-                ...content as object,
-                id: meta.id,
-                author: meta.author,
-                arweaveTxId: meta.arweaveTxId,
-                ipfsCid: meta.ipfsCid,
-                contentHash: meta.contentHash,
-                createdAt: new Date(meta.createdAt * 1000),
-                updatedAt: new Date(meta.updatedAt * 1000),
-                isVerified,
-                verificationError,
-              } as VerifiedPost;
-            })
-        );
+  return postsWithContent.filter(Boolean) as VerifiedPost[];
+}
 
-        setPosts(postsWithContent.filter(Boolean) as VerifiedPost[]);
-      } catch (err) {
-        console.error('Error loading posts:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load posts');
-      } finally {
-        setIsLoading(false);
+export function usePosts(limit: number = 10, _offset: number = 0) {
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage: isLoadingMore,
+    hasNextPage: hasMore,
+    error: queryError,
+    refetch: rqRefetch,
+    fetchNextPage,
+  } = useInfiniteQuery({
+    queryKey: queryKeys.posts.infinite(limit),
+    queryFn: async ({ pageParam = 0 }) => {
+      const posts = await fetchPostsPage(limit, pageParam);
+      return {
+        posts,
+        nextOffset: pageParam + limit,
+        // If we got fewer posts than requested, there are no more
+        hasMore: posts.length >= limit,
+      };
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) =>
+      lastPage.hasMore ? lastPage.nextOffset : undefined,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Flatten pages into a single deduped array
+  const posts: VerifiedPost[] = [];
+  const seenIds = new Set<string>();
+  if (data) {
+    for (const page of data.pages) {
+      for (const post of page.posts) {
+        if (!seenIds.has(post.id)) {
+          seenIds.add(post.id);
+          posts.push(post);
+        }
       }
     }
+  }
 
-    loadPosts();
-  }, [limit, offset]);
+  const refetch = () => {
+    rqRefetch();
+  };
 
-  return { posts, isLoading, error };
+  const loadMore = async () => {
+    if (!isLoadingMore && hasMore) {
+      await fetchNextPage();
+    }
+  };
+
+  const error = queryError instanceof Error ? queryError.message : queryError ? String(queryError) : null;
+
+  return { posts, isLoading, isLoadingMore, hasMore: hasMore ?? false, error, refetch, loadMore };
 }
 
 export function usePost(postId: string) {
-  const [post, setPost] = useState<VerifiedPost | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: post = null, isLoading, error: queryError } = useQuery({
+    queryKey: queryKeys.posts.detail(postId),
+    queryFn: async () => {
+      const meta = await getPost(postId);
 
-  useEffect(() => {
-    async function loadPost() {
-      try {
-        setIsLoading(true);
-        setError(null);
-
-        const meta = await getPost(postId);
-
-        if (meta.isDeleted) {
-          setError('Post has been deleted');
-          return;
-        }
-
-        let content: unknown;
-        let isVerified = false;
-        let verificationError: string | undefined;
-
-        // Try IPFS first, then Arweave as fallback, then placeholder for test data
-        try {
-          const { data } = await fetchFromIPFSProxy(meta.ipfsCid);
-          content = data;
-
-          // Verify content hash
-          isVerified = await verifyContentHash(data, meta.contentHash);
-          if (!isVerified) {
-            verificationError = 'Content hash mismatch - content may have been tampered with';
-          }
-        } catch (ipfsErr) {
-          console.warn(`IPFS failed for post ${postId}, trying Arweave...`);
-          try {
-            const { data } = await fetchFromArweave(meta.arweaveTxId);
-            content = data;
-            isVerified = await verifyContentHash(data, meta.contentHash);
-            if (!isVerified) {
-              verificationError = 'Content hash mismatch - content may have been tampered with';
-            }
-          } catch (arweaveErr) {
-            // Use placeholder content for test posts
-            console.warn(`Using placeholder for test post ${postId}`);
-            const { data } = generatePlaceholderContent(postId);
-            content = data;
-            isVerified = false;
-            verificationError = 'Test post - content not stored';
-          }
-        }
-
-        setPost({
-          ...content as object,
-          id: meta.id,
-          author: meta.author,
-          arweaveTxId: meta.arweaveTxId,
-          ipfsCid: meta.ipfsCid,
-          contentHash: meta.contentHash,
-          createdAt: new Date(meta.createdAt * 1000),
-          updatedAt: new Date(meta.updatedAt * 1000),
-          isVerified,
-          verificationError,
-        } as VerifiedPost);
-      } catch (err) {
-        console.error('Error loading post:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load post');
-      } finally {
-        setIsLoading(false);
+      if (meta.isDeleted) {
+        throw new Error('Post has been deleted');
       }
-    }
 
-    if (postId) {
-      loadPost();
-    }
-  }, [postId]);
+      return fetchPostContent(meta);
+    },
+    enabled: !!postId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const error = queryError instanceof Error ? queryError.message : queryError ? String(queryError) : null;
 
   return { post, isLoading, error };
 }

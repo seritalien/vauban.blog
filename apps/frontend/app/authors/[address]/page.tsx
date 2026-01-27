@@ -1,16 +1,21 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useAuthorStats, PostWithEngagement } from '@/hooks/use-author-stats';
 import { getProfile, formatAddress, getDisplayName } from '@/lib/profiles';
 import { type AuthorProfile } from '@vauban/shared-types';
+import { POST_TYPE_TWEET, POST_TYPE_THREAD, POST_TYPE_ARTICLE } from '@vauban/shared-types';
 import { ArticleCardSkeleton } from '@/components/ui/Skeleton';
 import AuthorBadge, { getAuthorBadges } from '@/components/ui/AuthorBadge';
+import { FollowButton, FollowStats } from '@/components/social';
+import { MessageUserButton } from '@/components/messaging';
 
 export const dynamic = 'force-dynamic';
+
+type ProfileTab = 'all' | 'tweets' | 'articles' | 'threads';
 
 export default function AuthorProfilePage() {
   const params = useParams();
@@ -34,8 +39,32 @@ export default function AuthorProfilePage() {
     }
   }, [address]);
 
+  const [activeProfileTab, setActiveProfileTab] = useState<ProfileTab>('all');
+
   const displayName = getDisplayName(address, profile);
   const shortAddress = formatAddress(address);
+
+  // Filter posts by content type tab
+  const filteredPosts = useMemo(() => {
+    if (activeProfileTab === 'all') return postsWithEngagement;
+    return postsWithEngagement.filter((post) => {
+      const postType = post.postType ?? POST_TYPE_ARTICLE;
+      switch (activeProfileTab) {
+        case 'tweets': return postType === POST_TYPE_TWEET;
+        case 'articles': return postType === POST_TYPE_ARTICLE;
+        case 'threads': return postType === POST_TYPE_THREAD;
+        default: return true;
+      }
+    });
+  }, [postsWithEngagement, activeProfileTab]);
+
+  // Counts per tab
+  const tabCounts = useMemo(() => ({
+    all: postsWithEngagement.length,
+    tweets: postsWithEngagement.filter((p) => (p.postType ?? POST_TYPE_ARTICLE) === POST_TYPE_TWEET).length,
+    articles: postsWithEngagement.filter((p) => (p.postType ?? POST_TYPE_ARTICLE) === POST_TYPE_ARTICLE).length,
+    threads: postsWithEngagement.filter((p) => p.postType === POST_TYPE_THREAD).length,
+  }), [postsWithEngagement]);
 
   // Get author badges
   const badges = getAuthorBadges(
@@ -172,6 +201,15 @@ export default function AuthorProfilePage() {
                 </a>
               )}
             </div>
+
+            {/* Follow Stats and Actions */}
+            <div className="flex flex-col sm:flex-row items-center gap-4 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <FollowStats address={address} size="md" />
+              <div className="flex items-center gap-2">
+                <FollowButton targetAddress={address} size="md" />
+                <MessageUserButton recipientAddress={address} size="md" />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -250,17 +288,55 @@ export default function AuthorProfilePage() {
           </div>
         )}
 
-        {/* All Articles */}
+        {/* Content Tabs */}
         <div className="border-t border-gray-200 dark:border-gray-700 pt-8">
-          <h2 className="text-2xl font-bold mb-6">All Articles</h2>
+          {/* Tab navigation */}
+          <div className="flex border-b border-gray-200 dark:border-gray-700 mb-6">
+            {([
+              { key: 'all' as ProfileTab, label: 'All', count: tabCounts.all },
+              { key: 'tweets' as ProfileTab, label: 'Tweets', count: tabCounts.tweets },
+              { key: 'articles' as ProfileTab, label: 'Articles', count: tabCounts.articles },
+              { key: 'threads' as ProfileTab, label: 'Threads', count: tabCounts.threads },
+            ]).map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveProfileTab(tab.key)}
+                className={`
+                  flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors
+                  ${activeProfileTab === tab.key
+                    ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
+                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                  }
+                `}
+              >
+                {tab.label}
+                {tab.count > 0 && (
+                  <span className={`
+                    text-xs px-1.5 py-0.5 rounded-full
+                    ${activeProfileTab === tab.key
+                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+                    }
+                  `}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
 
-          {postsWithEngagement.length === 0 ? (
+          {/* Filtered content */}
+          {filteredPosts.length === 0 ? (
             <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-              <p>This author hasn&apos;t published any articles yet.</p>
+              <p>
+                {activeProfileTab === 'all'
+                  ? "This author hasn\u0027t published anything yet."
+                  : `No ${activeProfileTab} from this author yet.`}
+              </p>
             </div>
           ) : (
             <div className="grid gap-6 sm:grid-cols-2">
-              {postsWithEngagement.map((post) => (
+              {filteredPosts.map((post) => (
                 <ArticleCard key={post.id} post={post} />
               ))}
             </div>

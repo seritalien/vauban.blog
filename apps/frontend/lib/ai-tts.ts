@@ -185,6 +185,56 @@ export function getBrowserVoices(): SpeechSynthesisVoice[] {
 }
 
 /**
+ * Check if Hugging Face TTS is available (server-side)
+ */
+export function isServerTTSAvailable(): boolean {
+  // Server TTS is available if HuggingFace API key is configured
+  const apiKey = process.env.NEXT_PUBLIC_HUGGINGFACE_API_KEY;
+  return apiKey !== null && apiKey !== undefined && apiKey.length > 0;
+}
+
+/**
+ * Generate speech using server-side Hugging Face TTS
+ * Used as fallback when browser TTS is not available (e.g., Brave)
+ */
+export async function textToSpeechServer(
+  text: string,
+  lang: string = 'fr'
+): Promise<{ success: true; audioUrl: string } | { success: false; error: string }> {
+  try {
+    const response = await fetch('/api/ai/tts', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ text, lang }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      return {
+        success: false,
+        error: errorData.error || `Server TTS error: ${response.status}`,
+      };
+    }
+
+    // Create blob URL from audio response
+    const audioBlob = await response.blob();
+    const audioUrl = URL.createObjectURL(audioBlob);
+
+    return {
+      success: true,
+      audioUrl,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Network error',
+    };
+  }
+}
+
+/**
  * Generate speech using the best available provider
  * Falls back to browser if Fish Audio is not available
  */

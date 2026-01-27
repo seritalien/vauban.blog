@@ -32,6 +32,24 @@ const nextConfig: NextConfig = {
         port: '8080',
         pathname: '/ipfs/**',
       },
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+        port: '8005',
+        pathname: '/ipfs/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'gateway.pinata.cloud',
+      },
+      {
+        protocol: 'https',
+        hostname: 'ipfs.io',
+      },
+      {
+        protocol: 'https',
+        hostname: 'w3s.link',
+      },
     ],
   },
 

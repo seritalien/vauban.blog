@@ -66,9 +66,6 @@ export function useTiptapEditor({
         heading: {
           levels: [1, 2, 3, 4],
         },
-        history: {
-          depth: 100,
-        },
       }),
       Typography,
       Placeholder.configure({
@@ -115,8 +112,10 @@ export function useTiptapEditor({
     editable,
     onUpdate: ({ editor }) => {
       if (onUpdate) {
-        // Get markdown from editor
-        const markdown = editor.storage.markdown.getMarkdown();
+        // Get markdown from editor (using type assertion for tiptap-markdown extension)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const storage = editor.storage as any;
+        const markdown = storage.markdown?.getMarkdown?.() ?? '';
         onUpdate(markdown);
       }
     },
@@ -135,7 +134,9 @@ export function useTiptapEditor({
  */
 export function getMarkdownFromEditor(editor: Editor | null): string {
   if (!editor) return '';
-  return editor.storage.markdown.getMarkdown();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const storage = editor.storage as any;
+  return storage.markdown?.getMarkdown?.() ?? '';
 }
 
 /**

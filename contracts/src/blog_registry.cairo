@@ -2,6 +2,7 @@
 // Vauban Blog - BlogRegistry Smart Contract (Production-Grade)
 // Security: Reentrancy guards, Access control, Input validation, Pausable, Rate limiting
 // Features: Content workflow (draft/review/publish), Featured posts, Role-based permissions
+// Extended: PostType (Tweet/Thread/Article), Replies, Pinned posts for Twitter-like functionality
 
 use starknet::ContractAddress;
 
@@ -14,6 +15,14 @@ pub const POST_PENDING_REVIEW: u8 = 1;  // Submitted for editor review
 pub const POST_PUBLISHED: u8 = 2;       // Live and visible to all
 pub const POST_REJECTED: u8 = 3;        // Rejected by editor, needs revision
 pub const POST_ARCHIVED: u8 = 4;        // Hidden but not deleted
+
+// ============================================================================
+// POST TYPE CONSTANTS (for eXtended functionality)
+// ============================================================================
+
+pub const POST_TYPE_TWEET: u8 = 0;      // Short content < 280 chars, inline display
+pub const POST_TYPE_THREAD: u8 = 1;     // Multiple connected posts
+pub const POST_TYPE_ARTICLE: u8 = 2;    // Long-form content with full page display
 
 // ============================================================================
 // STORAGE STRUCTURES (Module-level for interface access)
@@ -43,6 +52,11 @@ pub struct PostMetadata {
     pub featured: bool,
     pub featured_at: u64,
     pub featured_by: ContractAddress,
+    // eXtended fields (Twitter-like functionality)
+    pub post_type: u8,        // POST_TYPE_TWEET, POST_TYPE_THREAD, POST_TYPE_ARTICLE
+    pub parent_id: u64,       // 0 if no parent (not a reply), otherwise the post being replied to
+    pub thread_root_id: u64,  // 0 if standalone, otherwise the root post of the thread
+    pub is_pinned: bool,      // Author can pin to their profile
 }
 
 #[derive(Drop, Serde, starknet::Store, Clone)]
@@ -64,7 +78,8 @@ mod BlogRegistry {
     use core::num::traits::Zero;
     use super::{
         PostMetadata, PostVersion,
-        POST_DRAFT, POST_PENDING_REVIEW, POST_PUBLISHED, POST_REJECTED, POST_ARCHIVED
+        POST_DRAFT, POST_PENDING_REVIEW, POST_PUBLISHED, POST_REJECTED, POST_ARCHIVED,
+        POST_TYPE_TWEET, POST_TYPE_THREAD, POST_TYPE_ARTICLE
     };
 
     #[storage]
@@ -106,6 +121,19 @@ mod BlogRegistry {
 
         // Access Control List for paid posts
         post_whitelist: Map<(u64, ContractAddress), bool>,  // (post_id, user) -> whitelisted
+
+        // eXtended functionality (Twitter-like)
+        // Thread tracking: thread_root_id -> (index) -> post_id (ordered by creation)
+        thread_posts: Map<(u64, u64), u64>,
+        thread_post_count: Map<u64, u64>,  // thread_root_id -> count of posts in thread
+        // Replies tracking: parent_id -> (index) -> post_id
+        post_replies: Map<(u64, u64), u64>,
+        post_reply_count: Map<u64, u64>,   // parent_id -> count of replies
+        // Posts by type tracking
+        posts_by_type: Map<(u8, u64), u64>,  // (post_type, index) -> post_id
+        posts_by_type_count: Map<u8, u64>,   // post_type -> count
+        // Pinned posts per author
+        pinned_post: Map<ContractAddress, u64>,  // author -> pinned post_id (only one)
     }
 
     // ============================================================================
@@ -142,6 +170,12 @@ mod BlogRegistry {
         UserWhitelisted: UserWhitelisted,
         UserBlacklisted: UserBlacklisted,
         RoleRegistryUpdated: RoleRegistryUpdated,
+        // eXtended events (Twitter-like)
+        PostPinned: PostPinned,
+        PostUnpinned: PostUnpinned,
+        ReplyAdded: ReplyAdded,
+        ThreadStarted: ThreadStarted,
+        ThreadContinued: ThreadContinued,
     }
 
     #[derive(Drop, Serde, starknet::Event)]
@@ -348,6 +382,56 @@ mod BlogRegistry {
         new_registry: ContractAddress,
     }
 
+    // eXtended events (Twitter-like)
+    #[derive(Drop, Serde, starknet::Event)]
+    struct PostPinned {
+        #[key]
+        post_id: u64,
+        #[key]
+        author: ContractAddress,
+        timestamp: u64,
+    }
+
+    #[derive(Drop, Serde, starknet::Event)]
+    struct PostUnpinned {
+        #[key]
+        post_id: u64,
+        #[key]
+        author: ContractAddress,
+        timestamp: u64,
+    }
+
+    #[derive(Drop, Serde, starknet::Event)]
+    struct ReplyAdded {
+        #[key]
+        post_id: u64,
+        #[key]
+        parent_id: u64,
+        #[key]
+        author: ContractAddress,
+        timestamp: u64,
+    }
+
+    #[derive(Drop, Serde, starknet::Event)]
+    struct ThreadStarted {
+        #[key]
+        thread_root_id: u64,
+        #[key]
+        author: ContractAddress,
+        timestamp: u64,
+    }
+
+    #[derive(Drop, Serde, starknet::Event)]
+    struct ThreadContinued {
+        #[key]
+        thread_root_id: u64,
+        #[key]
+        post_id: u64,
+        author: ContractAddress,
+        position: u64,  // Position in thread (1, 2, 3, etc.)
+        timestamp: u64,
+    }
+
     // ============================================================================
     // CONSTANTS
     // ============================================================================
@@ -486,6 +570,49 @@ mod BlogRegistry {
                 self.pending_review_count.write(current - 1);
             }
         }
+
+        fn add_to_type_index(ref self: ContractState, post_type: u8, post_id: u64) {
+            let index = self.posts_by_type_count.entry(post_type).read();
+            self.posts_by_type.entry((post_type, index)).write(post_id);
+            self.posts_by_type_count.entry(post_type).write(index + 1);
+        }
+
+        fn add_reply_to_parent(ref self: ContractState, parent_id: u64, post_id: u64) {
+            let index = self.post_reply_count.entry(parent_id).read();
+            self.post_replies.entry((parent_id, index)).write(post_id);
+            self.post_reply_count.entry(parent_id).write(index + 1);
+        }
+
+        fn add_post_to_thread(ref self: ContractState, thread_root_id: u64, post_id: u64) {
+            let index = self.thread_post_count.entry(thread_root_id).read();
+            self.thread_posts.entry((thread_root_id, index)).write(post_id);
+            self.thread_post_count.entry(thread_root_id).write(index + 1);
+        }
+
+        fn validate_post_type(self: @ContractState, post_type: u8) {
+            assert(
+                post_type == POST_TYPE_TWEET || post_type == POST_TYPE_THREAD || post_type == POST_TYPE_ARTICLE,
+                'Invalid post type'
+            );
+        }
+
+        fn validate_parent_exists(self: @ContractState, parent_id: u64) {
+            if parent_id > 0 {
+                let parent = self.posts.entry(parent_id).read();
+                assert(parent.id != 0, 'Parent post not found');
+                assert(!parent.is_deleted, 'Parent post is deleted');
+            }
+        }
+
+        fn validate_thread_root_exists(self: @ContractState, thread_root_id: u64) {
+            if thread_root_id > 0 {
+                let root = self.posts.entry(thread_root_id).read();
+                assert(root.id != 0, 'Thread root not found');
+                assert(!root.is_deleted, 'Thread root is deleted');
+                assert(root.post_type == POST_TYPE_THREAD, 'Not a thread root');
+            }
+        }
+
     }
 
     // ============================================================================
@@ -499,6 +626,7 @@ mod BlogRegistry {
         // ========================================================================
 
         /// Create a new post - editors/admins publish immediately, others create drafts
+        /// For backwards compatibility, this creates an ARTICLE type post with no parent/thread
         fn publish_post(
             ref self: ContractState,
             arweave_tx_id_1: felt252,
@@ -508,6 +636,35 @@ mod BlogRegistry {
             content_hash: felt252,
             price: u256,
             is_encrypted: bool,
+        ) -> u64 {
+            // Delegate to extended function with article defaults
+            self.publish_post_extended(
+                arweave_tx_id_1,
+                arweave_tx_id_2,
+                ipfs_cid_1,
+                ipfs_cid_2,
+                content_hash,
+                price,
+                is_encrypted,
+                POST_TYPE_ARTICLE,  // Default to article for backwards compatibility
+                0,  // No parent
+                0,  // No thread root
+            )
+        }
+
+        /// Create a new post with extended fields (post type, parent, thread)
+        fn publish_post_extended(
+            ref self: ContractState,
+            arweave_tx_id_1: felt252,
+            arweave_tx_id_2: felt252,
+            ipfs_cid_1: felt252,
+            ipfs_cid_2: felt252,
+            content_hash: felt252,
+            price: u256,
+            is_encrypted: bool,
+            post_type: u8,
+            parent_id: u64,
+            thread_root_id: u64,
         ) -> u64 {
             self.assert_not_paused();
             self.assert_no_reentrancy();
@@ -520,6 +677,11 @@ mod BlogRegistry {
 
             // Input validation
             self.validate_post_inputs(arweave_tx_id_1, ipfs_cid_1, content_hash, price);
+            self.validate_post_type(post_type);
+
+            // Validate parent and thread if specified
+            self.validate_parent_exists(parent_id);
+            self.validate_thread_root_exists(thread_root_id);
 
             let post_id = self.post_count.read() + 1;
             let now = get_block_timestamp();
@@ -550,6 +712,11 @@ mod BlogRegistry {
                 featured: false,
                 featured_at: 0,
                 featured_by: Zero::zero(),
+                // eXtended fields
+                post_type,
+                parent_id,
+                thread_root_id,
+                is_pinned: false,
             };
 
             // Store initial version in history
@@ -571,6 +738,40 @@ mod BlogRegistry {
 
             // Track by status
             self.add_to_status_index(initial_status, post_id);
+
+            // Track by post type
+            self.add_to_type_index(post_type, post_id);
+
+            // Track replies and threads
+            if parent_id > 0 {
+                self.add_reply_to_parent(parent_id, post_id);
+                self.emit(ReplyAdded {
+                    post_id,
+                    parent_id,
+                    author: caller,
+                    timestamp: now,
+                });
+            }
+
+            if thread_root_id > 0 {
+                let position = self.thread_post_count.entry(thread_root_id).read() + 1;
+                self.add_post_to_thread(thread_root_id, post_id);
+                self.emit(ThreadContinued {
+                    thread_root_id,
+                    post_id,
+                    author: caller,
+                    position,
+                    timestamp: now,
+                });
+            } else if post_type == POST_TYPE_THREAD {
+                // This is a new thread root - track it in its own thread index
+                self.add_post_to_thread(post_id, post_id);
+                self.emit(ThreadStarted {
+                    thread_root_id: post_id,
+                    author: caller,
+                    timestamp: now,
+                });
+            }
 
             // Emit appropriate events based on status
             if initial_status == POST_PUBLISHED {
@@ -1362,6 +1563,199 @@ mod BlogRegistry {
         fn get_publish_cooldown(self: @ContractState) -> u64 {
             self.publish_cooldown.read()
         }
+
+        // ========================================================================
+        // EXTENDED FUNCTIONS (Twitter-like)
+        // ========================================================================
+
+        /// Pin a post to the author's profile (only one pinned post allowed)
+        fn pin_post(ref self: ContractState, post_id: u64) {
+            self.assert_not_paused();
+
+            let caller = get_caller_address();
+            let post = self.posts.entry(post_id).read();
+
+            assert(post.id != 0, 'Post does not exist');
+            assert(post.author == caller, 'Not post author');
+            assert(!post.is_deleted, 'Post is deleted');
+            assert(post.status == POST_PUBLISHED, 'Post not published');
+
+            // Unpin previous post if any
+            let previously_pinned = self.pinned_post.entry(caller).read();
+            if previously_pinned > 0 && previously_pinned != post_id {
+                let mut old_post = self.posts.entry(previously_pinned).read();
+                old_post.is_pinned = false;
+                self.posts.entry(previously_pinned).write(old_post);
+            }
+
+            // Pin the new post
+            let mut updated_post = post;
+            updated_post.is_pinned = true;
+            self.posts.entry(post_id).write(updated_post);
+            self.pinned_post.entry(caller).write(post_id);
+
+            let now = get_block_timestamp();
+            self.emit(PostPinned {
+                post_id,
+                author: caller,
+                timestamp: now,
+            });
+        }
+
+        /// Unpin a post from the author's profile
+        fn unpin_post(ref self: ContractState, post_id: u64) {
+            self.assert_not_paused();
+
+            let caller = get_caller_address();
+            let post = self.posts.entry(post_id).read();
+
+            assert(post.id != 0, 'Post does not exist');
+            assert(post.author == caller, 'Not post author');
+            assert(post.is_pinned, 'Post is not pinned');
+
+            let mut updated_post = post;
+            updated_post.is_pinned = false;
+            self.posts.entry(post_id).write(updated_post);
+            self.pinned_post.entry(caller).write(0);
+
+            let now = get_block_timestamp();
+            self.emit(PostUnpinned {
+                post_id,
+                author: caller,
+                timestamp: now,
+            });
+        }
+
+        /// Get the pinned post for an author
+        fn get_pinned_post(self: @ContractState, author: ContractAddress) -> u64 {
+            self.pinned_post.entry(author).read()
+        }
+
+        /// Get posts by type with pagination
+        fn get_posts_by_type(
+            self: @ContractState,
+            post_type: u8,
+            limit: u64,
+            offset: u64
+        ) -> Array<PostMetadata> {
+            assert(post_type <= POST_TYPE_ARTICLE, 'Invalid post type');
+            assert(limit > 0 && limit <= MAX_POSTS_PER_QUERY, 'Invalid limit');
+
+            let mut result = ArrayTrait::new();
+            let total = self.posts_by_type_count.entry(post_type).read();
+
+            if offset >= total {
+                return result;
+            }
+
+            let end = if offset + limit > total { total } else { offset + limit };
+            let mut i = offset;
+
+            loop {
+                if i >= end {
+                    break;
+                }
+                let post_id = self.posts_by_type.entry((post_type, i)).read();
+                if post_id > 0 {
+                    let post = self.posts.entry(post_id).read();
+                    if post.post_type == post_type && !post.is_deleted && post.status == POST_PUBLISHED {
+                        result.append(post);
+                    }
+                }
+                i += 1;
+            };
+
+            result
+        }
+
+        /// Get replies to a post with pagination
+        fn get_post_replies(
+            self: @ContractState,
+            parent_id: u64,
+            limit: u64,
+            offset: u64
+        ) -> Array<PostMetadata> {
+            assert(parent_id > 0 && parent_id <= self.post_count.read(), 'Invalid parent ID');
+            assert(limit > 0 && limit <= MAX_POSTS_PER_QUERY, 'Invalid limit');
+
+            let mut result = ArrayTrait::new();
+            let total = self.post_reply_count.entry(parent_id).read();
+
+            if offset >= total {
+                return result;
+            }
+
+            let end = if offset + limit > total { total } else { offset + limit };
+            let mut i = offset;
+
+            loop {
+                if i >= end {
+                    break;
+                }
+                let post_id = self.post_replies.entry((parent_id, i)).read();
+                if post_id > 0 {
+                    let post = self.posts.entry(post_id).read();
+                    if !post.is_deleted && post.status == POST_PUBLISHED {
+                        result.append(post);
+                    }
+                }
+                i += 1;
+            };
+
+            result
+        }
+
+        /// Get reply count for a post
+        fn get_reply_count(self: @ContractState, parent_id: u64) -> u64 {
+            self.post_reply_count.entry(parent_id).read()
+        }
+
+        /// Get posts in a thread with pagination
+        fn get_thread_posts(
+            self: @ContractState,
+            thread_root_id: u64,
+            limit: u64,
+            offset: u64
+        ) -> Array<PostMetadata> {
+            assert(thread_root_id > 0 && thread_root_id <= self.post_count.read(), 'Invalid thread root ID');
+            assert(limit > 0 && limit <= MAX_POSTS_PER_QUERY, 'Invalid limit');
+
+            let mut result = ArrayTrait::new();
+            let total = self.thread_post_count.entry(thread_root_id).read();
+
+            if offset >= total {
+                return result;
+            }
+
+            let end = if offset + limit > total { total } else { offset + limit };
+            let mut i = offset;
+
+            loop {
+                if i >= end {
+                    break;
+                }
+                let post_id = self.thread_posts.entry((thread_root_id, i)).read();
+                if post_id > 0 {
+                    let post = self.posts.entry(post_id).read();
+                    if !post.is_deleted && post.status == POST_PUBLISHED {
+                        result.append(post);
+                    }
+                }
+                i += 1;
+            };
+
+            result
+        }
+
+        /// Get post count in a thread
+        fn get_thread_post_count(self: @ContractState, thread_root_id: u64) -> u64 {
+            self.thread_post_count.entry(thread_root_id).read()
+        }
+
+        /// Get count of posts by type
+        fn get_posts_count_by_type(self: @ContractState, post_type: u8) -> u64 {
+            self.posts_by_type_count.entry(post_type).read()
+        }
     }
 }
 
@@ -1457,4 +1851,43 @@ pub trait IBlogRegistry<TContractState> {
     // Rate limiting
     fn set_publish_cooldown(ref self: TContractState, cooldown_seconds: u64);
     fn get_publish_cooldown(self: @TContractState) -> u64;
+
+    // Extended functions (Twitter-like)
+    fn publish_post_extended(
+        ref self: TContractState,
+        arweave_tx_id_1: felt252,
+        arweave_tx_id_2: felt252,
+        ipfs_cid_1: felt252,
+        ipfs_cid_2: felt252,
+        content_hash: felt252,
+        price: u256,
+        is_encrypted: bool,
+        post_type: u8,
+        parent_id: u64,
+        thread_root_id: u64,
+    ) -> u64;
+    fn pin_post(ref self: TContractState, post_id: u64);
+    fn unpin_post(ref self: TContractState, post_id: u64);
+    fn get_pinned_post(self: @TContractState, author: ContractAddress) -> u64;
+    fn get_posts_by_type(
+        self: @TContractState,
+        post_type: u8,
+        limit: u64,
+        offset: u64
+    ) -> Array<PostMetadata>;
+    fn get_post_replies(
+        self: @TContractState,
+        parent_id: u64,
+        limit: u64,
+        offset: u64
+    ) -> Array<PostMetadata>;
+    fn get_reply_count(self: @TContractState, parent_id: u64) -> u64;
+    fn get_thread_posts(
+        self: @TContractState,
+        thread_root_id: u64,
+        limit: u64,
+        offset: u64
+    ) -> Array<PostMetadata>;
+    fn get_thread_post_count(self: @TContractState, thread_root_id: u64) -> u64;
+    fn get_posts_count_by_type(self: @TContractState, post_type: u8) -> u64;
 }

@@ -48,6 +48,8 @@ let contractAddresses: {
   social?: string;
   paymaster?: string;
   sessionKeyManager?: string;
+  roleRegistry?: string;
+  reputation?: string;
 } = {};
 
 /**
@@ -58,6 +60,8 @@ export function setContractAddresses(addresses: {
   social?: string;
   paymaster?: string;
   sessionKeyManager?: string;
+  roleRegistry?: string;
+  reputation?: string;
 }) {
   contractAddresses = { ...contractAddresses, ...addresses };
 }
@@ -106,7 +110,7 @@ export async function getPostCount(): Promise<number> {
   const address = getBlogRegistryAddress();
 
   try {
-    const { abi } = await import('./abis/blog_registry.json');
+    const { default: abi } = await import('./abis/blog_registry.json');
     const contract = new Contract(abi, address, provider);
 
     const result = await contract.get_post_count();
@@ -133,13 +137,14 @@ function safeDecodeShortString(value: any): string {
 
 /**
  * Get post metadata by ID
+ * Returns extended metadata including post type, parent/thread IDs, and pinned status
  */
 export async function getPost(postId: string): Promise<PostMetadata> {
   const provider = getProvider();
   const address = getBlogRegistryAddress();
 
   try {
-    const { abi } = await import('./abis/blog_registry.json');
+    const { default: abi } = await import('./abis/blog_registry.json');
     const contract = new Contract(abi, address, provider);
 
     const result = await contract.get_post(postId);
@@ -152,7 +157,7 @@ export async function getPost(postId: string): Promise<PostMetadata> {
 
     return {
       id: result.id.toString(),
-      author: result.author,
+      author: '0x' + BigInt(result.author).toString(16),
       arweaveTxId: joinFelt252Parts(arweave1, arweave2),
       ipfsCid: joinFelt252Parts(ipfs1, ipfs2),
       contentHash: result.content_hash.toString(),
@@ -161,6 +166,11 @@ export async function getPost(postId: string): Promise<PostMetadata> {
       createdAt: Number(result.created_at),
       updatedAt: Number(result.updated_at),
       isDeleted: result.is_deleted || false,
+      // eXtended fields
+      postType: Number(result.post_type ?? 2), // Default to article (2) for backwards compatibility
+      parentId: result.parent_id && Number(result.parent_id) > 0 ? result.parent_id.toString() : undefined,
+      threadRootId: result.thread_root_id && Number(result.thread_root_id) > 0 ? result.thread_root_id.toString() : undefined,
+      isPinned: result.is_pinned || false,
     };
   } catch (error) {
     console.error(`Error getting post ${postId}:`, error);
@@ -170,13 +180,14 @@ export async function getPost(postId: string): Promise<PostMetadata> {
 
 /**
  * Get multiple posts with pagination
+ * Returns extended metadata for all posts
  */
 export async function getPosts(limit: number = 10, offset: number = 0): Promise<PostMetadata[]> {
   const provider = getProvider();
   const address = getBlogRegistryAddress();
 
   try {
-    const { abi } = await import('./abis/blog_registry.json');
+    const { default: abi } = await import('./abis/blog_registry.json');
     const contract = new Contract(abi, address, provider);
 
     const result = await contract.get_posts(limit, offset);
@@ -190,7 +201,7 @@ export async function getPosts(limit: number = 10, offset: number = 0): Promise<
 
       return {
         id: post.id.toString(),
-        author: post.author,
+        author: '0x' + BigInt(post.author).toString(16),
         arweaveTxId: joinFelt252Parts(arweave1, arweave2),
         ipfsCid: joinFelt252Parts(ipfs1, ipfs2),
         contentHash: post.content_hash.toString(),
@@ -199,6 +210,11 @@ export async function getPosts(limit: number = 10, offset: number = 0): Promise<
         createdAt: Number(post.created_at),
         updatedAt: Number(post.updated_at),
         isDeleted: post.is_deleted || false,
+        // eXtended fields
+        postType: Number(post.post_type ?? 2),
+        parentId: post.parent_id && Number(post.parent_id) > 0 ? post.parent_id.toString() : undefined,
+        threadRootId: post.thread_root_id && Number(post.thread_root_id) > 0 ? post.thread_root_id.toString() : undefined,
+        isPinned: post.is_pinned || false,
       };
     });
   } catch (error) {
@@ -240,7 +256,7 @@ export async function publishPost(
   const address = getBlogRegistryAddress();
 
   try {
-    const { abi } = await import('./abis/blog_registry.json');
+    const { default: abi } = await import('./abis/blog_registry.json');
     const contract = new Contract(abi, address, account);
 
     // Split strings into two parts for felt252 storage (31 chars each)
@@ -267,6 +283,412 @@ export async function publishPost(
   }
 }
 
+// ============================================================================
+// EXTENDED POST FUNCTIONS (Twitter-like)
+// ============================================================================
+
+// Post type constants (matching contract)
+export const POST_TYPE_TWEET = 0;
+export const POST_TYPE_THREAD = 1;
+export const POST_TYPE_ARTICLE = 2;
+
+/**
+ * Publish a post with extended fields (post type, parent, thread)
+ * Use this for tweets, thread posts, and replies
+ */
+export async function publishPostExtended(
+  account: AccountLike,
+  arweaveTxId: string,
+  ipfsCid: string,
+  contentHash: string,
+  price: string,
+  isEncrypted: boolean = false,
+  postType: number = POST_TYPE_ARTICLE,
+  parentId: string | number = 0,
+  threadRootId: string | number = 0
+): Promise<string> {
+  const address = getBlogRegistryAddress();
+
+  try {
+    const { default: abi } = await import('./abis/blog_registry.json');
+    const contract = new Contract(abi, address, account);
+
+    const [arweave1, arweave2] = splitStringForFelt252(arweaveTxId);
+    const [ipfs1, ipfs2] = splitStringForFelt252(ipfsCid);
+
+    const result = await contract.publish_post_extended(
+      shortString.encodeShortString(arweave1),
+      arweave2 ? shortString.encodeShortString(arweave2) : 0,
+      shortString.encodeShortString(ipfs1),
+      ipfs2 ? shortString.encodeShortString(ipfs2) : 0,
+      contentHash,
+      price,
+      isEncrypted,
+      postType,
+      String(parentId),
+      String(threadRootId)
+    );
+
+    await account.waitForTransaction(result.transaction_hash);
+
+    // Read the post ID from the contract (post_count == latest post_id after publish)
+    const postId = await getPostCount();
+    console.log(`Extended post published (type=${postType}, id=${postId}): TX ${result.transaction_hash}`);
+
+    return String(postId);
+  } catch (error) {
+    console.error('Error publishing extended post:', error);
+    throw new Error(`Failed to publish extended post: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Publish a tweet (short content, < 280 chars)
+ */
+export async function publishTweet(
+  account: AccountLike,
+  arweaveTxId: string,
+  ipfsCid: string,
+  contentHash: string
+): Promise<string> {
+  return publishPostExtended(account, arweaveTxId, ipfsCid, contentHash, '0', false, POST_TYPE_TWEET);
+}
+
+/**
+ * Publish a reply to an existing post
+ */
+export async function publishReply(
+  account: AccountLike,
+  arweaveTxId: string,
+  ipfsCid: string,
+  contentHash: string,
+  parentId: string | number
+): Promise<string> {
+  return publishPostExtended(account, arweaveTxId, ipfsCid, contentHash, '0', false, POST_TYPE_TWEET, parentId);
+}
+
+/**
+ * Start a new thread
+ */
+export async function startThread(
+  account: AccountLike,
+  arweaveTxId: string,
+  ipfsCid: string,
+  contentHash: string
+): Promise<string> {
+  return publishPostExtended(account, arweaveTxId, ipfsCid, contentHash, '0', false, POST_TYPE_THREAD);
+}
+
+/**
+ * Continue an existing thread
+ */
+export async function continueThread(
+  account: AccountLike,
+  arweaveTxId: string,
+  ipfsCid: string,
+  contentHash: string,
+  threadRootId: string | number
+): Promise<string> {
+  return publishPostExtended(account, arweaveTxId, ipfsCid, contentHash, '0', false, POST_TYPE_THREAD, 0, threadRootId);
+}
+
+/**
+ * Pin a post to author's profile
+ */
+export async function pinPost(account: AccountLike, postId: string): Promise<string> {
+  const address = getBlogRegistryAddress();
+
+  try {
+    const { default: abi } = await import('./abis/blog_registry.json');
+    const contract = new Contract(abi, address, account);
+
+    const result = await contract.pin_post(postId);
+    await account.waitForTransaction(result.transaction_hash);
+    console.log(`Post ${postId} pinned: TX ${result.transaction_hash}`);
+
+    return result.transaction_hash;
+  } catch (error) {
+    console.error('Error pinning post:', error);
+    throw new Error(`Failed to pin post: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Unpin a post from author's profile
+ */
+export async function unpinPost(account: AccountLike, postId: string): Promise<string> {
+  const address = getBlogRegistryAddress();
+
+  try {
+    const { default: abi } = await import('./abis/blog_registry.json');
+    const contract = new Contract(abi, address, account);
+
+    const result = await contract.unpin_post(postId);
+    await account.waitForTransaction(result.transaction_hash);
+    console.log(`Post ${postId} unpinned: TX ${result.transaction_hash}`);
+
+    return result.transaction_hash;
+  } catch (error) {
+    console.error('Error unpinning post:', error);
+    throw new Error(`Failed to unpin post: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Get the pinned post for an author
+ */
+export async function getPinnedPost(authorAddress: string): Promise<string | null> {
+  const provider = getProvider();
+  const address = getBlogRegistryAddress();
+
+  try {
+    const { default: abi } = await import('./abis/blog_registry.json');
+    const contract = new Contract(abi, address, provider);
+
+    const result = await contract.get_pinned_post(authorAddress);
+    const pinnedId = Number(result);
+    return pinnedId > 0 ? pinnedId.toString() : null;
+  } catch (error) {
+    console.error('Error getting pinned post:', error);
+    return null;
+  }
+}
+
+/**
+ * Get posts by type (tweet/thread/article) with pagination
+ */
+export async function getPostsByType(
+  postType: number,
+  limit: number = 10,
+  offset: number = 0
+): Promise<PostMetadata[]> {
+  const provider = getProvider();
+  const address = getBlogRegistryAddress();
+
+  try {
+    const { default: abi } = await import('./abis/blog_registry.json');
+    const contract = new Contract(abi, address, provider);
+
+    const result = await contract.get_posts_by_type(postType, limit, offset);
+
+    return result.map((post: any) => {
+      const arweave1 = safeDecodeShortString(post.arweave_tx_id_1);
+      const arweave2 = safeDecodeShortString(post.arweave_tx_id_2);
+      const ipfs1 = safeDecodeShortString(post.ipfs_cid_1);
+      const ipfs2 = safeDecodeShortString(post.ipfs_cid_2);
+
+      return {
+        id: post.id.toString(),
+        author: '0x' + BigInt(post.author).toString(16),
+        arweaveTxId: joinFelt252Parts(arweave1, arweave2),
+        ipfsCid: joinFelt252Parts(ipfs1, ipfs2),
+        contentHash: post.content_hash.toString(),
+        price: post.price.toString(),
+        isEncrypted: post.is_encrypted,
+        createdAt: Number(post.created_at),
+        updatedAt: Number(post.updated_at),
+        isDeleted: post.is_deleted || false,
+        postType: Number(post.post_type ?? 2),
+        parentId: post.parent_id && Number(post.parent_id) > 0 ? post.parent_id.toString() : undefined,
+        threadRootId: post.thread_root_id && Number(post.thread_root_id) > 0 ? post.thread_root_id.toString() : undefined,
+        isPinned: post.is_pinned || false,
+      };
+    });
+  } catch (error) {
+    console.error('Error getting posts by type:', error);
+    throw new Error(`Failed to get posts by type: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Get replies to a post with pagination
+ */
+export async function getPostReplies(
+  parentId: string,
+  limit: number = 10,
+  offset: number = 0
+): Promise<PostMetadata[]> {
+  const provider = getProvider();
+  const address = getBlogRegistryAddress();
+
+  try {
+    const { default: abi } = await import('./abis/blog_registry.json');
+    const contract = new Contract(abi, address, provider);
+
+    const result = await contract.get_post_replies(parentId, limit, offset);
+
+    return result.map((post: any) => {
+      const arweave1 = safeDecodeShortString(post.arweave_tx_id_1);
+      const arweave2 = safeDecodeShortString(post.arweave_tx_id_2);
+      const ipfs1 = safeDecodeShortString(post.ipfs_cid_1);
+      const ipfs2 = safeDecodeShortString(post.ipfs_cid_2);
+
+      return {
+        id: post.id.toString(),
+        author: '0x' + BigInt(post.author).toString(16),
+        arweaveTxId: joinFelt252Parts(arweave1, arweave2),
+        ipfsCid: joinFelt252Parts(ipfs1, ipfs2),
+        contentHash: post.content_hash.toString(),
+        price: post.price.toString(),
+        isEncrypted: post.is_encrypted,
+        createdAt: Number(post.created_at),
+        updatedAt: Number(post.updated_at),
+        isDeleted: post.is_deleted || false,
+        postType: Number(post.post_type ?? 2),
+        parentId: post.parent_id && Number(post.parent_id) > 0 ? post.parent_id.toString() : undefined,
+        threadRootId: post.thread_root_id && Number(post.thread_root_id) > 0 ? post.thread_root_id.toString() : undefined,
+        isPinned: post.is_pinned || false,
+      };
+    });
+  } catch (error) {
+    console.error('Error getting post replies:', error);
+    throw new Error(`Failed to get post replies: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Get reply count for a post
+ */
+export async function getReplyCount(parentId: string): Promise<number> {
+  const provider = getProvider();
+  const address = getBlogRegistryAddress();
+
+  try {
+    const { default: abi } = await import('./abis/blog_registry.json');
+    const contract = new Contract(abi, address, provider);
+
+    const result = await contract.get_reply_count(parentId);
+    return Number(result);
+  } catch (error) {
+    console.error('Error getting reply count:', error);
+    return 0;
+  }
+}
+
+/**
+ * Get posts in a thread with pagination
+ */
+export async function getThreadPosts(
+  threadRootId: string,
+  limit: number = 25,
+  offset: number = 0
+): Promise<PostMetadata[]> {
+  const provider = getProvider();
+  const address = getBlogRegistryAddress();
+
+  try {
+    const { default: abi } = await import('./abis/blog_registry.json');
+    const contract = new Contract(abi, address, provider);
+
+    const result = await contract.get_thread_posts(threadRootId, limit, offset);
+
+    return result.map((post: any) => {
+      const arweave1 = safeDecodeShortString(post.arweave_tx_id_1);
+      const arweave2 = safeDecodeShortString(post.arweave_tx_id_2);
+      const ipfs1 = safeDecodeShortString(post.ipfs_cid_1);
+      const ipfs2 = safeDecodeShortString(post.ipfs_cid_2);
+
+      return {
+        id: post.id.toString(),
+        author: '0x' + BigInt(post.author).toString(16),
+        arweaveTxId: joinFelt252Parts(arweave1, arweave2),
+        ipfsCid: joinFelt252Parts(ipfs1, ipfs2),
+        contentHash: post.content_hash.toString(),
+        price: post.price.toString(),
+        isEncrypted: post.is_encrypted,
+        createdAt: Number(post.created_at),
+        updatedAt: Number(post.updated_at),
+        isDeleted: post.is_deleted || false,
+        postType: Number(post.post_type ?? 2),
+        parentId: post.parent_id && Number(post.parent_id) > 0 ? post.parent_id.toString() : undefined,
+        threadRootId: post.thread_root_id && Number(post.thread_root_id) > 0 ? post.thread_root_id.toString() : undefined,
+        isPinned: post.is_pinned || false,
+      };
+    });
+  } catch (error) {
+    console.error('Error getting thread posts:', error);
+    throw new Error(`Failed to get thread posts: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Get post count in a thread
+ */
+export async function getThreadPostCount(threadRootId: string): Promise<number> {
+  const provider = getProvider();
+  const address = getBlogRegistryAddress();
+
+  try {
+    const { default: abi } = await import('./abis/blog_registry.json');
+    const contract = new Contract(abi, address, provider);
+
+    const result = await contract.get_thread_post_count(threadRootId);
+    return Number(result);
+  } catch (error) {
+    console.error('Error getting thread post count:', error);
+    return 0;
+  }
+}
+
+/**
+ * Get count of posts by type
+ */
+export async function getPostsCountByType(postType: number): Promise<number> {
+  const provider = getProvider();
+  const address = getBlogRegistryAddress();
+
+  try {
+    const { default: abi } = await import('./abis/blog_registry.json');
+    const contract = new Contract(abi, address, provider);
+
+    const result = await contract.get_posts_count_by_type(postType);
+    return Number(result);
+  } catch (error) {
+    console.error('Error getting posts count by type:', error);
+    return 0;
+  }
+}
+
+/**
+ * Get the current publish cooldown in seconds
+ */
+export async function getPublishCooldown(): Promise<number> {
+  const provider = getProvider();
+  const address = getBlogRegistryAddress();
+
+  try {
+    const { default: abi } = await import('./abis/blog_registry.json');
+    const contract = new Contract(abi, address, provider);
+
+    const result = await contract.get_publish_cooldown();
+    return Number(result);
+  } catch (error) {
+    console.error('Error getting publish cooldown:', error);
+    return 60; // Default assumption
+  }
+}
+
+/**
+ * Set the publish cooldown (owner only)
+ */
+export async function setPublishCooldown(
+  account: AccountLike,
+  cooldownSeconds: number
+): Promise<void> {
+  const address = getBlogRegistryAddress();
+
+  try {
+    const { default: abi } = await import('./abis/blog_registry.json');
+    const contract = new Contract(abi, address, account);
+
+    const result = await contract.set_publish_cooldown(cooldownSeconds);
+    await account.waitForTransaction(result.transaction_hash);
+  } catch (error) {
+    console.error('Error setting publish cooldown:', error);
+    throw new Error(`Failed to set cooldown: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
 /**
  * Check if user has access to a post
  */
@@ -275,7 +697,7 @@ export async function hasAccess(postId: string, userAddress: string): Promise<bo
   const address = getBlogRegistryAddress();
 
   try {
-    const { abi } = await import('./abis/blog_registry.json');
+    const { default: abi } = await import('./abis/blog_registry.json');
     const contract = new Contract(abi, address, provider);
 
     const result = await contract.has_access(postId, userAddress);
@@ -293,7 +715,7 @@ export async function purchasePost(account: AccountLike, postId: string): Promis
   const address = getBlogRegistryAddress();
 
   try {
-    const { abi } = await import('./abis/blog_registry.json');
+    const { default: abi } = await import('./abis/blog_registry.json');
     const contract = new Contract(abi, address, account);
 
     const result = await contract.purchase_post(postId);
@@ -316,7 +738,7 @@ export async function getPostPrice(postId: string): Promise<string> {
   const address = getBlogRegistryAddress();
 
   try {
-    const { abi } = await import('./abis/blog_registry.json');
+    const { default: abi } = await import('./abis/blog_registry.json');
     const contract = new Contract(abi, address, provider);
 
     const post = await contract.get_post(postId);
@@ -340,7 +762,7 @@ export async function updatePost(
   const address = getBlogRegistryAddress();
 
   try {
-    const { abi } = await import('./abis/blog_registry.json');
+    const { default: abi } = await import('./abis/blog_registry.json');
     const contract = new Contract(abi, address, account);
 
     // Split strings into two parts for felt252 storage (31 chars each)
@@ -373,7 +795,7 @@ export async function deletePost(account: AccountLike, postId: string): Promise<
   const address = getBlogRegistryAddress();
 
   try {
-    const { abi } = await import('./abis/blog_registry.json');
+    const { default: abi } = await import('./abis/blog_registry.json');
     const contract = new Contract(abi, address, account);
 
     const result = await contract.delete_post(postId);
@@ -409,7 +831,7 @@ export async function getPostVersion(postId: string, version: number): Promise<P
   const address = getBlogRegistryAddress();
 
   try {
-    const { abi } = await import('./abis/blog_registry.json');
+    const { default: abi } = await import('./abis/blog_registry.json');
     const contract = new Contract(abi, address, provider);
 
     const result = await contract.get_post_version(postId, version);
@@ -441,7 +863,7 @@ export async function getPostVersionCount(postId: string): Promise<number> {
   const address = getBlogRegistryAddress();
 
   try {
-    const { abi } = await import('./abis/blog_registry.json');
+    const { default: abi } = await import('./abis/blog_registry.json');
     const contract = new Contract(abi, address, provider);
 
     const result = await contract.get_post_version_count(postId);
@@ -464,7 +886,7 @@ export async function getPostVersions(
   const address = getBlogRegistryAddress();
 
   try {
-    const { abi } = await import('./abis/blog_registry.json');
+    const { default: abi } = await import('./abis/blog_registry.json');
     const contract = new Contract(abi, address, provider);
 
     const result = await contract.get_post_versions(postId, limit, offset);
@@ -506,7 +928,7 @@ export async function getCommentsForPost(
   const address = getSocialAddress();
 
   try {
-    const { abi } = await import('./abis/social.json');
+    const { default: abi } = await import('./abis/social.json');
     const contract = new Contract(abi, address, provider);
 
     const result = await contract.get_comments_for_post(postId, limit, offset);
@@ -514,7 +936,7 @@ export async function getCommentsForPost(
     return result.map((comment: any) => ({
       id: comment.id.toString(),
       postId: comment.post_id.toString(),
-      author: comment.author,
+      author: '0x' + BigInt(comment.author).toString(16),
       contentHash: comment.content_hash.toString(),
       parentCommentId: comment.parent_comment_id > 0 ? comment.parent_comment_id.toString() : undefined,
       createdAt: Number(comment.created_at),
@@ -524,6 +946,25 @@ export async function getCommentsForPost(
   } catch (error) {
     console.error(`Error getting comments for post ${postId}:`, error);
     throw new Error(`Failed to get comments: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Get comment count for a post (without fetching full comment objects)
+ */
+export async function getCommentCountForPost(postId: string): Promise<number> {
+  const provider = getProvider();
+  const address = getSocialAddress();
+
+  try {
+    const { default: abi } = await import('./abis/social.json');
+    const contract = new Contract(abi, address, provider);
+
+    const result = await contract.get_comment_count_for_post(postId);
+    return Number(result);
+  } catch (error) {
+    console.error(`Error getting comment count for post ${postId}:`, error);
+    return 0;
   }
 }
 
@@ -539,7 +980,7 @@ export async function addComment(
   const address = getSocialAddress();
 
   try {
-    const { abi } = await import('./abis/social.json');
+    const { default: abi } = await import('./abis/social.json');
     const contract = new Contract(abi, address, account);
 
     const result = await contract.add_comment(postId, contentHash, parentCommentId);
@@ -561,7 +1002,7 @@ export async function likePost(account: AccountLike, postId: string): Promise<st
   const address = getSocialAddress();
 
   try {
-    const { abi } = await import('./abis/social.json');
+    const { default: abi } = await import('./abis/social.json');
     const contract = new Contract(abi, address, account);
 
     const result = await contract.like_post(postId);
@@ -584,7 +1025,7 @@ export async function hasLikedPost(postId: string, userAddress: string): Promise
   const address = getSocialAddress();
 
   try {
-    const { abi } = await import('./abis/social.json');
+    const { default: abi } = await import('./abis/social.json');
     const contract = new Contract(abi, address, provider);
 
     const result = await contract.has_liked_post(postId, userAddress);
@@ -603,7 +1044,7 @@ export async function getPostLikes(postId: string): Promise<number> {
   const address = getSocialAddress();
 
   try {
-    const { abi } = await import('./abis/social.json');
+    const { default: abi } = await import('./abis/social.json');
     const contract = new Contract(abi, address, provider);
 
     const result = await contract.get_post_likes(postId);
@@ -621,7 +1062,7 @@ export async function unlikePost(account: AccountLike, postId: string): Promise<
   const address = getSocialAddress();
 
   try {
-    const { abi } = await import('./abis/social.json');
+    const { default: abi } = await import('./abis/social.json');
     const contract = new Contract(abi, address, account);
 
     const result = await contract.unlike_post(postId);
@@ -643,7 +1084,7 @@ export async function likeComment(account: AccountLike, commentId: string): Prom
   const address = getSocialAddress();
 
   try {
-    const { abi } = await import('./abis/social.json');
+    const { default: abi } = await import('./abis/social.json');
     const contract = new Contract(abi, address, account);
 
     const result = await contract.like_comment(commentId);
@@ -665,7 +1106,7 @@ export async function unlikeComment(account: AccountLike, commentId: string): Pr
   const address = getSocialAddress();
 
   try {
-    const { abi } = await import('./abis/social.json');
+    const { default: abi } = await import('./abis/social.json');
     const contract = new Contract(abi, address, account);
 
     const result = await contract.unlike_comment(commentId);
@@ -688,7 +1129,7 @@ export async function hasLikedComment(commentId: string, userAddress: string): P
   const address = getSocialAddress();
 
   try {
-    const { abi } = await import('./abis/social.json');
+    const { default: abi } = await import('./abis/social.json');
     const contract = new Contract(abi, address, provider);
 
     const result = await contract.has_liked_comment(commentId, userAddress);
@@ -719,7 +1160,7 @@ export async function addCommentWithSessionKey(
   const address = getSocialAddress();
 
   try {
-    const { abi } = await import('./abis/social.json');
+    const { default: abi } = await import('./abis/social.json');
     const contract = new Contract(abi, address, relayerAccount);
 
     const result = await contract.add_comment_with_session_key(
@@ -749,7 +1190,7 @@ export async function getSessionKeyNonce(sessionPublicKey: string): Promise<numb
   const address = getSocialAddress();
 
   try {
-    const { abi } = await import('./abis/social.json');
+    const { default: abi } = await import('./abis/social.json');
     const contract = new Contract(abi, address, provider);
 
     const result = await contract.get_session_key_nonce(sessionPublicKey);
@@ -768,7 +1209,7 @@ export async function getSessionKeyManager(): Promise<string> {
   const address = getSocialAddress();
 
   try {
-    const { abi } = await import('./abis/social.json');
+    const { default: abi } = await import('./abis/social.json');
     const contract = new Contract(abi, address, provider);
 
     const result = await contract.get_session_key_manager();
@@ -789,7 +1230,7 @@ export async function setSessionKeyManager(
   const address = getSocialAddress();
 
   try {
-    const { abi } = await import('./abis/social.json');
+    const { default: abi } = await import('./abis/social.json');
     const contract = new Contract(abi, address, account);
 
     const result = await contract.set_session_key_manager(managerAddress);
@@ -864,5 +1305,526 @@ export async function getBlockNumber(): Promise<number> {
   } catch (error) {
     console.error('Error getting block number:', error);
     throw new Error(`Failed to get block: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+// ============================================================================
+// ROLE REGISTRY FUNCTIONS
+// ============================================================================
+
+// Role constants matching the Cairo contract
+export const ROLE_READER = 0;
+export const ROLE_WRITER = 1;
+export const ROLE_CONTRIBUTOR = 2;
+export const ROLE_MODERATOR = 3;
+export const ROLE_EDITOR = 4;
+export const ROLE_ADMIN = 5;
+export const ROLE_OWNER = 6;
+
+// Role names for display
+export const ROLE_NAMES: Record<number, string> = {
+  [ROLE_READER]: 'Reader',
+  [ROLE_WRITER]: 'Writer',
+  [ROLE_CONTRIBUTOR]: 'Contributor',
+  [ROLE_MODERATOR]: 'Moderator',
+  [ROLE_EDITOR]: 'Editor',
+  [ROLE_ADMIN]: 'Admin',
+  [ROLE_OWNER]: 'Owner',
+};
+
+export interface UserRoleInfo {
+  user: string;
+  role: number;
+  roleName: string;
+  grantedAt: number;
+  grantedBy: string;
+  approvedPostCount: number;
+  reputation: bigint;
+}
+
+export interface RoleStats {
+  totalUsers: number;
+  readerCount: number;
+  writerCount: number;
+  contributorCount: number;
+  moderatorCount: number;
+  editorCount: number;
+  adminCount: number;
+  ownerCount: number;
+}
+
+/**
+ * Get Role Registry contract address
+ */
+export function getRoleRegistryAddress(): string {
+  const address = contractAddresses.roleRegistry || process.env.NEXT_PUBLIC_ROLE_REGISTRY_ADDRESS;
+  if (!address) {
+    throw new Error('Role Registry address not set. Call setContractAddresses() first.');
+  }
+  return address;
+}
+
+/**
+ * Get a user's role information
+ */
+export async function getUserRole(userAddress: string): Promise<UserRoleInfo> {
+  const provider = getProvider();
+  const address = getRoleRegistryAddress();
+
+  try {
+    const { default: abi } = await import('./abis/role_registry.json');
+    const contract = new Contract(abi, address, provider);
+
+    const result = await contract.get_user_role(userAddress);
+
+    return {
+      user: result.user.toString(),
+      role: Number(result.role),
+      roleName: ROLE_NAMES[Number(result.role)] || 'Unknown',
+      grantedAt: Number(result.granted_at),
+      grantedBy: result.granted_by.toString(),
+      approvedPostCount: Number(result.approved_post_count),
+      reputation: BigInt(result.reputation.toString()),
+    };
+  } catch (error) {
+    console.error(`Error getting role for user ${userAddress}:`, error);
+    // Return default role (READER) for unregistered users
+    return {
+      user: userAddress,
+      role: ROLE_READER,
+      roleName: ROLE_NAMES[ROLE_READER],
+      grantedAt: 0,
+      grantedBy: '',
+      approvedPostCount: 0,
+      reputation: 0n,
+    };
+  }
+}
+
+/**
+ * Check if user has minimum role level
+ */
+export async function hasMinRole(userAddress: string, minRole: number): Promise<boolean> {
+  const provider = getProvider();
+  const address = getRoleRegistryAddress();
+
+  try {
+    const { default: abi } = await import('./abis/role_registry.json');
+    const contract = new Contract(abi, address, provider);
+
+    const result = await contract.has_role(userAddress, minRole);
+    return Boolean(result);
+  } catch (error) {
+    console.error('Error checking role:', error);
+    return false;
+  }
+}
+
+/**
+ * Get role statistics
+ */
+export async function getRoleStats(): Promise<RoleStats> {
+  const provider = getProvider();
+  const address = getRoleRegistryAddress();
+
+  try {
+    const { default: abi } = await import('./abis/role_registry.json');
+    const contract = new Contract(abi, address, provider);
+
+    const [totalUsers, reader, writer, contributor, moderator, editor, admin, owner] = await Promise.all([
+      contract.get_total_users(),
+      contract.get_users_by_role(ROLE_READER),
+      contract.get_users_by_role(ROLE_WRITER),
+      contract.get_users_by_role(ROLE_CONTRIBUTOR),
+      contract.get_users_by_role(ROLE_MODERATOR),
+      contract.get_users_by_role(ROLE_EDITOR),
+      contract.get_users_by_role(ROLE_ADMIN),
+      contract.get_users_by_role(ROLE_OWNER),
+    ]);
+
+    return {
+      totalUsers: Number(totalUsers),
+      readerCount: Number(reader),
+      writerCount: Number(writer),
+      contributorCount: Number(contributor),
+      moderatorCount: Number(moderator),
+      editorCount: Number(editor),
+      adminCount: Number(admin),
+      ownerCount: Number(owner),
+    };
+  } catch (error) {
+    console.error('Error getting role stats:', error);
+    return {
+      totalUsers: 0,
+      readerCount: 0,
+      writerCount: 0,
+      contributorCount: 0,
+      moderatorCount: 0,
+      editorCount: 0,
+      adminCount: 0,
+      ownerCount: 0,
+    };
+  }
+}
+
+/**
+ * Grant a role to a user (requires sufficient permissions)
+ */
+export async function grantRole(
+  account: AccountLike,
+  userAddress: string,
+  role: number
+): Promise<string> {
+  const address = getRoleRegistryAddress();
+
+  try {
+    const { default: abi } = await import('./abis/role_registry.json');
+    const contract = new Contract(abi, address, account);
+
+    const result = await contract.grant_role(userAddress, role);
+
+    await account.waitForTransaction(result.transaction_hash);
+    console.log(`Role ${ROLE_NAMES[role]} granted to ${userAddress}: TX ${result.transaction_hash}`);
+
+    return result.transaction_hash;
+  } catch (error) {
+    console.error('Error granting role:', error);
+    throw new Error(`Failed to grant role: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Revoke a user's role (demotes to READER)
+ */
+export async function revokeRole(account: AccountLike, userAddress: string): Promise<string> {
+  const address = getRoleRegistryAddress();
+
+  try {
+    const { default: abi } = await import('./abis/role_registry.json');
+    const contract = new Contract(abi, address, account);
+
+    const result = await contract.revoke_role(userAddress);
+
+    await account.waitForTransaction(result.transaction_hash);
+    console.log(`Role revoked for ${userAddress}: TX ${result.transaction_hash}`);
+
+    return result.transaction_hash;
+  } catch (error) {
+    console.error('Error revoking role:', error);
+    throw new Error(`Failed to revoke role: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Register as a new user (gets WRITER role)
+ */
+export async function registerUser(account: AccountLike): Promise<string> {
+  const address = getRoleRegistryAddress();
+
+  try {
+    const { default: abi } = await import('./abis/role_registry.json');
+    const contract = new Contract(abi, address, account);
+
+    const result = await contract.register_user();
+
+    await account.waitForTransaction(result.transaction_hash);
+    console.log(`User registered: TX ${result.transaction_hash}`);
+
+    return result.transaction_hash;
+  } catch (error) {
+    console.error('Error registering user:', error);
+    throw new Error(`Failed to register user: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Check if user can publish immediately (CONTRIBUTOR+)
+ */
+export async function canPublishImmediately(userAddress: string): Promise<boolean> {
+  const provider = getProvider();
+  const address = getRoleRegistryAddress();
+
+  try {
+    const { default: abi } = await import('./abis/role_registry.json');
+    const contract = new Contract(abi, address, provider);
+
+    const result = await contract.can_publish_immediately(userAddress);
+    return Boolean(result);
+  } catch (error) {
+    console.error('Error checking publish permission:', error);
+    return false;
+  }
+}
+
+/**
+ * Check if user can manage users (ADMIN+)
+ */
+export async function canManageUsers(userAddress: string): Promise<boolean> {
+  const provider = getProvider();
+  const address = getRoleRegistryAddress();
+
+  try {
+    const { default: abi } = await import('./abis/role_registry.json');
+    const contract = new Contract(abi, address, provider);
+
+    const result = await contract.can_manage_users(userAddress);
+    return Boolean(result);
+  } catch (error) {
+    console.error('Error checking manage users permission:', error);
+    return false;
+  }
+}
+
+// ============================================================================
+// REPUTATION CONTRACT FUNCTIONS
+// ============================================================================
+
+// Badge constants matching the Cairo contract (bitmap values)
+export const BADGE_FIRST_POST = 1n;
+export const BADGE_PROLIFIC_WRITER = 2n;
+export const BADGE_CENTURY_CLUB = 4n;
+export const BADGE_FEATURED_AUTHOR = 8n;
+export const BADGE_CONVERSATIONALIST = 16n;
+export const BADGE_BELOVED = 32n;
+export const BADGE_EARLY_ADOPTER = 64n;
+export const BADGE_VERIFIED = 128n;
+export const BADGE_TOP_WRITER = 256n;
+export const BADGE_PREMIUM_AUTHOR = 512n;
+export const BADGE_TRUSTED = 1024n;
+export const BADGE_GUARDIAN = 2048n;
+
+// Badge metadata for display
+export const BADGE_INFO: Record<string, { name: string; description: string; icon: string }> = {
+  FIRST_POST: { name: 'First Post', description: 'Published your first article', icon: '✏️' },
+  PROLIFIC_WRITER: { name: 'Prolific Writer', description: 'Published 10+ articles', icon: '📝' },
+  CENTURY_CLUB: { name: 'Century Club', description: 'Published 100+ articles', icon: '💯' },
+  FEATURED_AUTHOR: { name: 'Featured Author', description: 'Had a featured article', icon: '⭐' },
+  CONVERSATIONALIST: { name: 'Conversationalist', description: 'Posted 100+ comments', icon: '💬' },
+  BELOVED: { name: 'Beloved', description: 'Received 1000+ likes', icon: '❤️' },
+  EARLY_ADOPTER: { name: 'Early Adopter', description: 'Joined in the first month', icon: '🚀' },
+  VERIFIED: { name: 'Verified', description: 'Completed identity verification', icon: '✅' },
+  TOP_WRITER: { name: 'Top Writer', description: 'Monthly top 10 writer', icon: '🏆' },
+  PREMIUM_AUTHOR: { name: 'Premium Author', description: 'Has paid subscribers', icon: '💎' },
+  TRUSTED: { name: 'Trusted', description: 'Earned Contributor role', icon: '🛡️' },
+  GUARDIAN: { name: 'Guardian', description: 'Active moderator', icon: '⚔️' },
+};
+
+// Level names
+export const LEVEL_NAMES: Record<number, string> = {
+  1: 'Newcomer',
+  2: 'Active Writer',
+  3: 'Established',
+  4: 'Veteran',
+  5: 'Legend',
+};
+
+export interface UserReputation {
+  user: string;
+  totalPoints: bigint;
+  level: number;
+  levelName: string;
+  badges: bigint;
+  badgeList: string[];
+  joinedAt: number;
+  postCount: number;
+  commentCount: number;
+  likesReceived: number;
+  subscribers: number;
+  featuredCount: number;
+}
+
+/**
+ * Get Reputation contract address
+ */
+export function getReputationAddress(): string {
+  const address = contractAddresses.reputation || process.env.NEXT_PUBLIC_REPUTATION_ADDRESS;
+  if (!address) {
+    throw new Error('Reputation address not set. Call setContractAddresses() first.');
+  }
+  return address;
+}
+
+/**
+ * Parse badge bitmap into list of badge names
+ */
+function parseBadges(badgeBitmap: bigint): string[] {
+  const badges: string[] = [];
+  const badgeValues = [
+    { value: BADGE_FIRST_POST, name: 'FIRST_POST' },
+    { value: BADGE_PROLIFIC_WRITER, name: 'PROLIFIC_WRITER' },
+    { value: BADGE_CENTURY_CLUB, name: 'CENTURY_CLUB' },
+    { value: BADGE_FEATURED_AUTHOR, name: 'FEATURED_AUTHOR' },
+    { value: BADGE_CONVERSATIONALIST, name: 'CONVERSATIONALIST' },
+    { value: BADGE_BELOVED, name: 'BELOVED' },
+    { value: BADGE_EARLY_ADOPTER, name: 'EARLY_ADOPTER' },
+    { value: BADGE_VERIFIED, name: 'VERIFIED' },
+    { value: BADGE_TOP_WRITER, name: 'TOP_WRITER' },
+    { value: BADGE_PREMIUM_AUTHOR, name: 'PREMIUM_AUTHOR' },
+    { value: BADGE_TRUSTED, name: 'TRUSTED' },
+    { value: BADGE_GUARDIAN, name: 'GUARDIAN' },
+  ];
+
+  for (const badge of badgeValues) {
+    if ((badgeBitmap & badge.value) !== 0n) {
+      badges.push(badge.name);
+    }
+  }
+
+  return badges;
+}
+
+/**
+ * Get user's reputation data
+ */
+export async function getUserReputation(userAddress: string): Promise<UserReputation> {
+  const provider = getProvider();
+  const address = getReputationAddress();
+
+  try {
+    const { default: abi } = await import('./abis/reputation.json');
+    const contract = new Contract(abi, address, provider);
+
+    const result = await contract.get_reputation(userAddress);
+    const badges = BigInt(result.badges.toString());
+    const level = Number(result.level);
+
+    return {
+      user: result.user.toString(),
+      totalPoints: BigInt(result.total_points.toString()),
+      level,
+      levelName: LEVEL_NAMES[level] || 'Unknown',
+      badges,
+      badgeList: parseBadges(badges),
+      joinedAt: Number(result.joined_at),
+      postCount: Number(result.post_count),
+      commentCount: Number(result.comment_count),
+      likesReceived: Number(result.likes_received),
+      subscribers: Number(result.subscribers),
+      featuredCount: Number(result.featured_count),
+    };
+  } catch (error) {
+    console.error(`Error getting reputation for ${userAddress}:`, error);
+    // Return default reputation for unregistered users
+    return {
+      user: userAddress,
+      totalPoints: 0n,
+      level: 1,
+      levelName: LEVEL_NAMES[1],
+      badges: 0n,
+      badgeList: [],
+      joinedAt: 0,
+      postCount: 0,
+      commentCount: 0,
+      likesReceived: 0,
+      subscribers: 0,
+      featuredCount: 0,
+    };
+  }
+}
+
+/**
+ * Get user's points
+ */
+export async function getUserPoints(userAddress: string): Promise<bigint> {
+  const provider = getProvider();
+  const address = getReputationAddress();
+
+  try {
+    const { default: abi } = await import('./abis/reputation.json');
+    const contract = new Contract(abi, address, provider);
+
+    const result = await contract.get_points(userAddress);
+    return BigInt(result.toString());
+  } catch (error) {
+    console.error('Error getting user points:', error);
+    return 0n;
+  }
+}
+
+/**
+ * Get user's level
+ */
+export async function getUserLevel(userAddress: string): Promise<number> {
+  const provider = getProvider();
+  const address = getReputationAddress();
+
+  try {
+    const { default: abi } = await import('./abis/reputation.json');
+    const contract = new Contract(abi, address, provider);
+
+    const result = await contract.get_level(userAddress);
+    return Number(result);
+  } catch (error) {
+    console.error('Error getting user level:', error);
+    return 1;
+  }
+}
+
+/**
+ * Get user's badges as bitmap
+ */
+export async function getUserBadges(userAddress: string): Promise<{ bitmap: bigint; list: string[] }> {
+  const provider = getProvider();
+  const address = getReputationAddress();
+
+  try {
+    const { default: abi } = await import('./abis/reputation.json');
+    const contract = new Contract(abi, address, provider);
+
+    const result = await contract.get_badges(userAddress);
+    const bitmap = BigInt(result.toString());
+
+    return {
+      bitmap,
+      list: parseBadges(bitmap),
+    };
+  } catch (error) {
+    console.error('Error getting user badges:', error);
+    return { bitmap: 0n, list: [] };
+  }
+}
+
+/**
+ * Check if user has a specific badge
+ */
+export async function hasBadge(userAddress: string, badge: bigint): Promise<boolean> {
+  const provider = getProvider();
+  const address = getReputationAddress();
+
+  try {
+    const { default: abi } = await import('./abis/reputation.json');
+    const contract = new Contract(abi, address, provider);
+
+    const result = await contract.has_badge(userAddress, badge);
+    return Boolean(result);
+  } catch (error) {
+    console.error('Error checking badge:', error);
+    return false;
+  }
+}
+
+/**
+ * Get total platform stats
+ */
+export async function getReputationStats(): Promise<{ totalUsers: number; totalPointsDistributed: bigint }> {
+  const provider = getProvider();
+  const address = getReputationAddress();
+
+  try {
+    const { default: abi } = await import('./abis/reputation.json');
+    const contract = new Contract(abi, address, provider);
+
+    const [totalUsers, totalPoints] = await Promise.all([
+      contract.get_total_users(),
+      contract.get_total_points_distributed(),
+    ]);
+
+    return {
+      totalUsers: Number(totalUsers),
+      totalPointsDistributed: BigInt(totalPoints.toString()),
+    };
+  } catch (error) {
+    console.error('Error getting reputation stats:', error);
+    return { totalUsers: 0, totalPointsDistributed: 0n };
   }
 }

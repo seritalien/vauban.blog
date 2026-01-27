@@ -491,6 +491,7 @@ export const PostEditor: FC<PostEditorProps> = ({
       // Parse and validate with Zod
       const postData = PostInputSchema.parse({
         ...formData,
+        contentType: 'article',
         tags: formData.tags,
         coverImage: formData.coverImage?.trim() || undefined,
       });
@@ -783,7 +784,7 @@ export const PostEditor: FC<PostEditorProps> = ({
                 <label className="block text-sm font-semibold">Content (Markdown)</label>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-gray-500 dark:text-gray-400">
-                    AI: Select text + bubble menu or type "/"
+                    AI: Select text + bubble menu or type &quot;/&quot;
                   </span>
                   <button
                     type="button"
@@ -802,13 +803,13 @@ export const PostEditor: FC<PostEditorProps> = ({
               <TiptapSplitEditor
                 ref={tiptapEditorRef}
                 content={formData.content}
-                onChange={(content) => setFormData({ ...formData, content })}
+                onChange={(content) => setFormData(prev => ({ ...prev, content }))}
                 placeholder="Write your article content in Markdown..."
                 editable={!isSubmitting}
                 onSelectionChange={handleTiptapSelectionChange}
               />
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Use AI to improve your writing: select text for quick actions or type "/" for commands
+                Use AI to improve your writing: select text for quick actions or type &quot;/&quot; for commands
               </p>
             </div>
 
@@ -839,6 +840,9 @@ export const PostEditor: FC<PostEditorProps> = ({
                 <button
                   type="button"
                   onClick={async () => {
+                    // Prevent multiple clicks
+                    if (isGeneratingImage) return;
+
                     if (!formData.title && !formData.content) {
                       alert('Please add a title or content first');
                       return;
@@ -849,33 +853,48 @@ export const PostEditor: FC<PostEditorProps> = ({
                       const { generateCoverImage } = await import('@/lib/ai-images');
                       const result = await generateCoverImage(formData.title, formData.content);
                       if (result.success) {
-                        // If it's a blob URL, upload to IPFS first
+                        // Always upload to IPFS for persistence
+                        let blob: Blob;
+
                         if (result.url.startsWith('blob:')) {
                           const blobResponse = await fetch(result.url);
-                          const blob = await blobResponse.blob();
-
-                          // Upload to IPFS
-                          const ipfsFormData = new FormData();
-                          ipfsFormData.append('file', blob, 'cover.png');
-
-                          const ipfsResponse = await fetch('/api/ipfs/add', {
-                            method: 'POST',
-                            body: ipfsFormData,
-                          });
-
-                          if (!ipfsResponse.ok) {
-                            throw new Error('Failed to upload image to IPFS');
-                          }
-
-                          const ipfsData = await ipfsResponse.json();
-                          const ipfsUrl = `/api/ipfs/${ipfsData.cid}`;
-                          setFormData({ ...formData, coverImage: ipfsUrl });
-
-                          // Revoke blob URL to free memory
-                          URL.revokeObjectURL(result.url);
+                          blob = await blobResponse.blob();
+                        } else if (result.url.startsWith('data:')) {
+                          // Convert base64 data URL to blob
+                          const response = await fetch(result.url);
+                          blob = await response.blob();
                         } else {
-                          // Direct URL (e.g., from Together AI)
-                          setFormData({ ...formData, coverImage: result.url });
+                          // External URL (e.g., Pollinations) - fetch and convert to blob
+                          console.log('[PostEditor] Fetching external image for IPFS upload:', result.url.substring(0, 80));
+                          const response = await fetch(result.url);
+                          if (!response.ok) {
+                            throw new Error('Failed to fetch generated image');
+                          }
+                          blob = await response.blob();
+                        }
+
+                        // Upload to IPFS
+                        const ipfsFormData = new FormData();
+                        ipfsFormData.append('file', blob, 'cover.png');
+
+                        const ipfsResponse = await fetch('/api/ipfs/add', {
+                          method: 'POST',
+                          body: ipfsFormData,
+                        });
+
+                        if (!ipfsResponse.ok) {
+                          throw new Error('Failed to upload image to IPFS');
+                        }
+
+                        const ipfsData = await ipfsResponse.json();
+                        const ipfsUrl = `/api/ipfs/${ipfsData.cid}`;
+                        console.log('[PostEditor] Image uploaded to IPFS:', ipfsUrl);
+                        // Use functional update to avoid stale closure
+                        setFormData(prev => ({ ...prev, coverImage: ipfsUrl }));
+
+                        // Revoke blob URL to free memory
+                        if (result.url.startsWith('blob:')) {
+                          URL.revokeObjectURL(result.url);
                         }
                       } else {
                         alert(`Error: ${result.error}`);
@@ -900,7 +919,7 @@ export const PostEditor: FC<PostEditorProps> = ({
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                       </svg>
-                      <span>Generating...</span>
+                      <span>Génération... (30-60s)</span>
                     </>
                   ) : (
                     <>

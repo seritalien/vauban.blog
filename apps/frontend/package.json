@@ -13,10 +13,12 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@auth/core": "^0.34.3",
     "@headlessui/react": "^2.2.9",
     "@tailwindcss/typography": "^0.5.19",
     "@tanstack/react-query": "^5.90.20",
     "@tanstack/react-virtual": "^3.13.18",
+    "@tiptap/core": "^3.17.1",
     "@tiptap/extension-bubble-menu": "^3.17.1",
     "@tiptap/extension-code-block-lowlight": "^3.17.1",
     "@tiptap/extension-highlight": "^3.17.1",
@@ -40,6 +42,7 @@
     "fuse.js": "^7.1.0",
     "lowlight": "^3.3.0",
     "next": "^15.0.0",
+    "next-auth": "5.0.0-beta.30",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^9.0.1",

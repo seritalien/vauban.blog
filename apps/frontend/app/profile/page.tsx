@@ -8,8 +8,12 @@ import { useRole } from '@/hooks/use-role';
 import {
   BADGES,
   getReputationLevel,
-  getUserBadges,
+  getUserBadges as getUserBadgesFromBitmap,
 } from '@vauban/shared-types';
+import {
+  getUserReputation,
+  type UserReputation as ContractUserReputation,
+} from '@vauban/web3-utils';
 import Link from 'next/link';
 import { format, subDays, isAfter, formatDistanceToNow } from 'date-fns';
 import { normalizeAddress, getProfile, saveProfile, formatAddress } from '@/lib/profiles';
@@ -108,6 +112,23 @@ function ProfilePageContent() {
     }
   }, [address]);
 
+  // Contract reputation data
+  const [contractReputation, setContractReputation] = useState<ContractUserReputation | null>(null);
+
+  // Fetch reputation from contract
+  useEffect(() => {
+    async function loadReputation() {
+      if (!address) return;
+      try {
+        const rep = await getUserReputation(address);
+        setContractReputation(rep);
+      } catch (err) {
+        console.error('Failed to load reputation:', err);
+      }
+    }
+    loadReputation();
+  }, [address]);
+
   // Fetch scheduled posts
   const fetchScheduledPosts = useCallback(async () => {
     if (!address) return;
@@ -181,15 +202,29 @@ function ProfilePageContent() {
     subscriberCount: 23,
   }), []);
 
-  // Mock reputation (will be from Reputation contract)
-  const reputation: ReputationData = useMemo(() => ({
-    totalPoints: userRole?.reputation ? BigInt(userRole.reputation) : BigInt(1250),
-    level: 3,
-    badges: BigInt(0b0000_0101_1001), // FIRST_POST, FEATURED_AUTHOR, CONVERSATIONALIST, EARLY_ADOPTER
-    postCount: myPosts.length,
-    commentCount: 47,
-    likeCount: 312,
-  }), [userRole, myPosts.length]);
+  // Reputation data (from contract or fallback to mock)
+  const reputation: ReputationData = useMemo(() => {
+    if (contractReputation && contractReputation.joinedAt > 0) {
+      // Use real contract data
+      return {
+        totalPoints: contractReputation.totalPoints,
+        level: contractReputation.level,
+        badges: contractReputation.badges,
+        postCount: contractReputation.postCount,
+        commentCount: contractReputation.commentCount,
+        likeCount: contractReputation.likesReceived,
+      };
+    }
+    // Fallback to local post count with mock data
+    return {
+      totalPoints: userRole?.reputation ? BigInt(userRole.reputation) : BigInt(0),
+      level: 1,
+      badges: BigInt(0),
+      postCount: myPosts.length,
+      commentCount: 0,
+      likeCount: 0,
+    };
+  }, [contractReputation, userRole, myPosts.length]);
 
   // Calculate post stats
   const postStats = useMemo(() => {
@@ -207,7 +242,7 @@ function ProfilePageContent() {
 
   // Get reputation level info
   const reputationLevel = getReputationLevel(reputation.totalPoints);
-  const userBadges = getUserBadges(reputation.badges);
+  const userBadges = getUserBadgesFromBitmap(reputation.badges);
 
   // Format STRK amounts
   const formatStrk = (wei: bigint) => {
@@ -406,7 +441,7 @@ function OverviewTab({
   userBadges: string[];
   postStats: { total: number; thisWeek: number; thisMonth: number; paidPosts: number; verifiedPosts: number };
   scheduledPosts: ScheduledPost[];
-  myPosts: Array<{ id: string; title: string; createdAt: Date; isPaid: boolean; isVerified: boolean; price?: number }>;
+  myPosts: Array<{ id: string; title?: string; createdAt: Date; isPaid: boolean; isVerified: boolean; price?: number }>;
   formatStrk: (wei: bigint) => string;
   onCancelScheduled: (id: string) => void;
 }) {
@@ -636,7 +671,7 @@ function PostsTab({
   scheduledPosts,
   onCancelScheduled,
 }: {
-  myPosts: Array<{ id: string; title: string; createdAt: Date; isPaid: boolean; isVerified: boolean; price?: number }>;
+  myPosts: Array<{ id: string; title?: string; createdAt: Date; isPaid: boolean; isVerified: boolean; price?: number }>;
   scheduledPosts: ScheduledPost[];
   onCancelScheduled: (id: string) => void;
 }) {
@@ -963,7 +998,7 @@ function RecentPostsTable({
   posts,
   showAll = false,
 }: {
-  posts: Array<{ id: string; title: string; createdAt: Date; isPaid: boolean; isVerified: boolean; price?: number }>;
+  posts: Array<{ id: string; title?: string; createdAt: Date; isPaid: boolean; isVerified: boolean; price?: number }>;
   showAll?: boolean;
 }) {
   return (
@@ -986,7 +1021,7 @@ function RecentPostsTable({
                   href={`/articles/${post.id}`}
                   className="font-medium text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 line-clamp-1"
                 >
-                  {post.title}
+                  {post.title || 'Untitled'}
                 </Link>
               </td>
               <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">

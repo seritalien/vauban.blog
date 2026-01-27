@@ -1,0 +1,343 @@
+[
+  {
+    "type": "impl",
+    "name": "FollowsImpl",
+    "interface_name": "vauban_blog::follows::IFollows"
+  },
+  {
+    "type": "enum",
+    "name": "core::bool",
+    "variants": [
+      {
+        "name": "False",
+        "type": "()"
+      },
+      {
+        "name": "True",
+        "type": "()"
+      }
+    ]
+  },
+  {
+    "type": "interface",
+    "name": "vauban_blog::follows::IFollows",
+    "items": [
+      {
+        "type": "function",
+        "name": "follow",
+        "inputs": [
+          {
+            "name": "user_to_follow",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "unfollow",
+        "inputs": [
+          {
+            "name": "user_to_unfollow",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "is_following",
+        "inputs": [
+          {
+            "name": "follower",
+            "type": "core::starknet::contract_address::ContractAddress"
+          },
+          {
+            "name": "followed",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_follower_count",
+        "inputs": [
+          {
+            "name": "user",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::integer::u64"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_following_count",
+        "inputs": [
+          {
+            "name": "user",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::integer::u64"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_followers",
+        "inputs": [
+          {
+            "name": "user",
+            "type": "core::starknet::contract_address::ContractAddress"
+          },
+          {
+            "name": "limit",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "offset",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::array::Array::<core::starknet::contract_address::ContractAddress>"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_following",
+        "inputs": [
+          {
+            "name": "user",
+            "type": "core::starknet::contract_address::ContractAddress"
+          },
+          {
+            "name": "limit",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "offset",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::array::Array::<core::starknet::contract_address::ContractAddress>"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "pause",
+        "inputs": [],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "unpause",
+        "inputs": [],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "is_paused",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "set_follow_cooldown",
+        "inputs": [
+          {
+            "name": "cooldown_seconds",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "get_follow_cooldown",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::integer::u64"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_owner",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "state_mutability": "view"
+      }
+    ]
+  },
+  {
+    "type": "constructor",
+    "name": "constructor",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "core::starknet::contract_address::ContractAddress"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vauban_blog::follows::Follows::Followed",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "follower",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      },
+      {
+        "name": "followed",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      },
+      {
+        "name": "follower_total_following",
+        "type": "core::integer::u64",
+        "kind": "data"
+      },
+      {
+        "name": "followed_total_followers",
+        "type": "core::integer::u64",
+        "kind": "data"
+      },
+      {
+        "name": "timestamp",
+        "type": "core::integer::u64",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vauban_blog::follows::Follows::Unfollowed",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "follower",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      },
+      {
+        "name": "followed",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      },
+      {
+        "name": "follower_total_following",
+        "type": "core::integer::u64",
+        "kind": "data"
+      },
+      {
+        "name": "followed_total_followers",
+        "type": "core::integer::u64",
+        "kind": "data"
+      },
+      {
+        "name": "timestamp",
+        "type": "core::integer::u64",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vauban_blog::follows::Follows::Paused",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "timestamp",
+        "type": "core::integer::u64",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vauban_blog::follows::Follows::Unpaused",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "timestamp",
+        "type": "core::integer::u64",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vauban_blog::follows::Follows::Event",
+    "kind": "enum",
+    "variants": [
+      {
+        "name": "Followed",
+        "type": "vauban_blog::follows::Follows::Followed",
+        "kind": "nested"
+      },
+      {
+        "name": "Unfollowed",
+        "type": "vauban_blog::follows::Follows::Unfollowed",
+        "kind": "nested"
+      },
+      {
+        "name": "Paused",
+        "type": "vauban_blog::follows::Follows::Paused",
+        "kind": "nested"
+      },
+      {
+        "name": "Unpaused",
+        "type": "vauban_blog::follows::Follows::Unpaused",
+        "kind": "nested"
+      }
+    ]
+  }
+]

@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback, Suspense } from 'react';
 import { usePosts, VerifiedPost } from '@/hooks/use-posts';
+import { POST_TYPE_ARTICLE } from '@vauban/shared-types';
 import { subDays, subMonths, subYears, isAfter, isBefore } from 'date-fns';
 import { ArticleCardSkeleton } from '@/components/ui/Skeleton';
 import SearchFilterBar from '@/components/search/SearchFilterBar';
@@ -11,7 +12,8 @@ import HeroSection from '@/components/home/HeroSection';
 import TrustBadges from '@/components/ui/TrustBadges';
 import FeaturedArticles from '@/components/home/FeaturedArticles';
 import { EnhancedArticleCard, type ArticleCardData } from '@/components/article/EnhancedArticleCard';
-import { getProfile, getDisplayName, toAddressString } from '@/lib/profiles';
+import { getProfile, getDisplayName, toAddressString, normalizeAddress } from '@/lib/profiles';
+import { Sidebar, CategoryPills } from '@/components/blog';
 
 // Disable static generation for this page (requires IPFS/Arweave client-side)
 export const dynamic = 'force-dynamic';
@@ -131,9 +133,11 @@ function applyFilters(post: VerifiedPost, filters: SearchFilters): { matches: bo
     }
   }
 
-  // Author filter
+  // Author filter - normalize addresses for proper comparison
   if (filters.author) {
-    if (post.author?.toLowerCase() !== filters.author.toLowerCase()) {
+    const normalizedPostAuthor = normalizeAddress(post.author);
+    const normalizedFilterAuthor = normalizeAddress(filters.author);
+    if (normalizedPostAuthor !== normalizedFilterAuthor) {
       return { matches: false, relevance: 0 };
     }
   }
@@ -193,8 +197,8 @@ function toArticleCardData(post: VerifiedPost): ArticleCardData {
   return {
     id: post.id,
     slug: post.id, // Using ID as slug for now
-    title: post.title,
-    excerpt: post.excerpt,
+    title: post.title || 'Untitled',
+    excerpt: post.excerpt || '',
     coverImage: post.coverImage,
     tags: post.tags ?? [],
     author: {
@@ -213,38 +217,64 @@ function HomeContent() {
   const { posts, isLoading, error } = usePosts(100, 0);
   const [filters, setFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
-  // Collect all unique tags from posts
-  const allTags = useMemo(() => {
-    return posts.flatMap((post) => post.tags ?? []);
+  // Blog view: only show articles (tweets and threads belong in /feed)
+  const articles = useMemo(() => {
+    return posts.filter((p) => (p.postType ?? POST_TYPE_ARTICLE) === POST_TYPE_ARTICLE);
   }, [posts]);
 
-  // Collect all unique authors from posts
+  // Collect all unique tags from articles (for search bar)
+  const allTags = useMemo(() => {
+    return articles.flatMap((post) => post.tags ?? []);
+  }, [articles]);
+
+  // Get unique popular tags (sorted by frequency) for category pills
+  const popularTags = useMemo(() => {
+    const counts: Record<string, number> = {};
+    articles.forEach((post) => {
+      post.tags?.forEach((tag) => {
+        counts[tag] = (counts[tag] || 0) + 1;
+      });
+    });
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([tag]) => tag);
+  }, [articles]);
+
+  // Collect all unique authors from articles
   const allAuthors = useMemo(() => {
     const authors = new Set<string>();
-    posts.forEach((post) => {
+    articles.forEach((post) => {
       if (post.author) {
         authors.add(post.author);
       }
     });
     return Array.from(authors);
-  }, [posts]);
+  }, [articles]);
 
   // Calculate stats for hero section
   const stats = useMemo(() => {
-    const uniqueAuthors = new Set(posts.map((post) => post.author));
-    const verifiedCount = posts.filter((post) => post.isVerified).length;
+    const uniqueAuthors = new Set(articles.map((post) => post.author));
+    const verifiedCount = articles.filter((post) => post.isVerified).length;
     return {
-      totalPosts: posts.length,
-      verifiedPercent: posts.length > 0 ? Math.round((verifiedCount / posts.length) * 100) : 100,
+      totalPosts: articles.length,
+      verifiedPercent: articles.length > 0 ? Math.round((verifiedCount / articles.length) * 100) : 100,
       totalAuthors: uniqueAuthors.size,
     };
-  }, [posts]);
+  }, [articles]);
 
-  // Filter and sort posts based on all filters
+  // Filter and sort posts based on all filters + sidebar tag selection
   const filteredPosts = useMemo(() => {
-    // Apply all filters and calculate relevance scores
-    const filteredWithRelevance = posts
+    // Apply sidebar tag filter first
+    let postsToFilter = articles;
+    if (selectedTag) {
+      postsToFilter = articles.filter((post) => post.tags?.includes(selectedTag));
+    }
+
+    // Apply all other filters and calculate relevance scores
+    const filteredWithRelevance = postsToFilter
       .map((post) => {
         const { matches, relevance } = applyFilters(post, filters);
         return { post, matches, relevance };
@@ -257,7 +287,13 @@ function HomeContent() {
       filters.sortBy,
       filters.search.length > 0
     );
-  }, [posts, filters]);
+  }, [articles, filters, selectedTag]);
+
+  // Handle tag selection from sidebar
+  const handleTagSelect = useCallback((tag: string | null) => {
+    setSelectedTag(tag);
+    setCurrentPage(1);
+  }, []);
 
   // Pagination calculations
   const totalPages = Math.ceil(filteredPosts.length / POSTS_PER_PAGE);
@@ -315,7 +351,8 @@ function HomeContent() {
     filters.dateRange !== 'all' ||
     filters.priceFilter !== 'all' ||
     filters.verificationFilter !== 'all' ||
-    filters.author.length > 0;
+    filters.author.length > 0 ||
+    selectedTag !== null;
 
   return (
     <>
@@ -326,56 +363,96 @@ function HomeContent() {
       <TrustBadges />
 
       {/* Featured Articles - only show if no filters */}
-      {!hasActiveFilters && posts.length > 0 && <FeaturedArticles posts={posts} />}
+      {!hasActiveFilters && articles.length > 0 && <FeaturedArticles posts={articles} />}
 
       <div id="articles" className="container mx-auto px-4 py-8 sm:py-12">
-        <h1 className="text-3xl sm:text-4xl font-bold mb-6 sm:mb-8">
-          {hasActiveFilters ? 'Search Results' : 'All Articles'}
-        </h1>
+        <div className="flex flex-col lg:flex-row lg:gap-8">
+          {/* Main Content */}
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
+              <h1 className="text-3xl sm:text-4xl font-bold">
+                {hasActiveFilters ? 'Search Results' : 'All Articles'}
+                {selectedTag && (
+                  <span className="ml-3 text-lg font-normal text-blue-600 dark:text-blue-400">
+                    #{selectedTag}
+                  </span>
+                )}
+              </h1>
+              {selectedTag && (
+                <button
+                  onClick={() => handleTagSelect(null)}
+                  className="self-start sm:self-auto px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                >
+                  Clear filter
+                </button>
+              )}
+            </div>
 
-        {/* Search and Filter Bar */}
-        <SearchFilterBar allTags={allTags} allAuthors={allAuthors} onFilterChange={handleFilterChange} />
-
-        {filteredPosts.length === 0 && hasActiveFilters ? (
-          <div className="text-center py-12 text-gray-600 dark:text-gray-400">
-            <p className="text-lg sm:text-xl">No articles match your search.</p>
-            <p className="mt-2">Try different keywords or clear the filters.</p>
-          </div>
-        ) : filteredPosts.length === 0 ? (
-          <div className="text-center py-12 text-gray-600 dark:text-gray-400">
-            <p className="text-lg sm:text-xl">No articles published yet.</p>
-            <p className="mt-2">Be the first to publish!</p>
-          </div>
-        ) : (
-          <div className="grid gap-4 sm:gap-6 lg:gap-8 sm:grid-cols-2 lg:grid-cols-3">
-            {paginatedPosts.map((post, index) => (
-              <EnhancedArticleCard
-                key={post.id}
-                article={toArticleCardData(post)}
-                index={index}
+            {/* Category Pills (mobile) */}
+            <div className="lg:hidden">
+              <CategoryPills
+                categories={popularTags}
+                selectedCategory={selectedTag}
+                onSelect={handleTagSelect}
               />
-            ))}
+            </div>
+
+            {/* Search and Filter Bar */}
+            <SearchFilterBar allTags={allTags} allAuthors={allAuthors} onFilterChange={handleFilterChange} />
+
+            {filteredPosts.length === 0 && hasActiveFilters ? (
+              <div className="text-center py-12 text-gray-600 dark:text-gray-400">
+                <p className="text-lg sm:text-xl">No articles match your search.</p>
+                <p className="mt-2">Try different keywords or clear the filters.</p>
+              </div>
+            ) : filteredPosts.length === 0 ? (
+              <div className="text-center py-12 text-gray-600 dark:text-gray-400">
+                <p className="text-lg sm:text-xl">No articles published yet.</p>
+                <p className="mt-2">Be the first to publish!</p>
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:gap-6 sm:grid-cols-2">
+                {paginatedPosts.map((post, index) => (
+                  <EnhancedArticleCard
+                    key={post.id}
+                    article={toArticleCardData(post)}
+                    index={index}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Pagination */}
+            {filteredPosts.length > 0 && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={handlePageChange}
+              />
+            )}
+
+            {/* Results count */}
+            {filteredPosts.length > 0 && (
+              <p className="mt-4 text-sm text-gray-500 dark:text-gray-400 text-center">
+                Showing {(currentPage - 1) * POSTS_PER_PAGE + 1}-
+                {Math.min(currentPage * POSTS_PER_PAGE, filteredPosts.length)} of {filteredPosts.length}{' '}
+                articles
+                {hasActiveFilters && ` (filtered from ${articles.length})`}
+              </p>
+            )}
           </div>
-        )}
 
-        {/* Pagination */}
-        {filteredPosts.length > 0 && (
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPageChange={handlePageChange}
-          />
-        )}
-
-        {/* Results count */}
-        {filteredPosts.length > 0 && (
-          <p className="mt-4 text-sm text-gray-500 dark:text-gray-400 text-center">
-            Showing {(currentPage - 1) * POSTS_PER_PAGE + 1}-
-            {Math.min(currentPage * POSTS_PER_PAGE, filteredPosts.length)} of {filteredPosts.length}{' '}
-            articles
-            {hasActiveFilters && ` (filtered from ${posts.length})`}
-          </p>
-        )}
+          {/* Sidebar (desktop only) */}
+          <div className="hidden lg:block lg:w-80 xl:w-96 flex-shrink-0">
+            <div className="sticky top-24">
+              <Sidebar
+                posts={articles}
+                selectedTag={selectedTag}
+                onTagSelect={handleTagSelect}
+              />
+            </div>
+          </div>
+        </div>
       </div>
     </>
   );

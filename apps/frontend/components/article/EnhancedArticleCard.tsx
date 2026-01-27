@@ -1,9 +1,14 @@
 'use client';
 
-import { type FC } from 'react';
+import { type FC, useCallback } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
+import { useQueryClient } from '@tanstack/react-query';
+import { getPost } from '@vauban/web3-utils';
+import { queryKeys } from '@/lib/query-keys';
+import { fetchPostContent } from '@/hooks/use-posts';
 
 export interface ArticleCardData {
   id: string;
@@ -38,6 +43,7 @@ export const EnhancedArticleCard: FC<EnhancedArticleCardProps> = ({
   index = 0,
   variant = 'default',
 }) => {
+  const queryClient = useQueryClient();
   const {
     slug,
     title,
@@ -57,6 +63,18 @@ export const EnhancedArticleCard: FC<EnhancedArticleCardProps> = ({
     addSuffix: true,
   });
 
+  // Prefetch article data on hover for instant navigation
+  const handleMouseEnter = useCallback(() => {
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.posts.detail(slug),
+      queryFn: async () => {
+        const meta = await getPost(slug);
+        return fetchPostContent(meta);
+      },
+      staleTime: 5 * 60 * 1000,
+    });
+  }, [queryClient, slug]);
+
   if (variant === 'compact') {
     return (
       <motion.article
@@ -64,13 +82,17 @@ export const EnhancedArticleCard: FC<EnhancedArticleCardProps> = ({
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: index * 0.05 }}
         className="group flex gap-4 p-4 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+        onMouseEnter={handleMouseEnter}
       >
         {coverImage && (
-          <Link href={articleUrl} className="flex-shrink-0">
-            <img
+          <Link href={articleUrl} className="flex-shrink-0 relative w-20 h-20">
+            <Image
               src={coverImage}
               alt={title}
-              className="w-20 h-20 rounded-lg object-cover"
+              width={80}
+              height={80}
+              className="rounded-lg object-cover"
+              loading="lazy"
             />
           </Link>
         )}
@@ -95,18 +117,26 @@ export const EnhancedArticleCard: FC<EnhancedArticleCardProps> = ({
       transition={{ delay: index * 0.1 }}
       whileHover={{ y: -4 }}
       className="group relative overflow-hidden rounded-xl bg-white dark:bg-gray-800 shadow-sm hover:shadow-xl transition-shadow duration-300"
+      onMouseEnter={handleMouseEnter}
     >
       {/* Cover image with overlay */}
       <Link href={articleUrl} className="block relative h-48 overflow-hidden">
         {coverImage ? (
           <>
-            <motion.img
-              src={coverImage}
-              alt={title}
-              className="w-full h-full object-cover"
+            <motion.div
+              className="w-full h-full"
               whileHover={{ scale: 1.05 }}
               transition={{ duration: 0.4 }}
-            />
+            >
+              <Image
+                src={coverImage}
+                alt={title}
+                fill
+                sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                className="object-cover"
+                loading="lazy"
+              />
+            </motion.div>
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
           </>
         ) : (
@@ -163,10 +193,13 @@ export const EnhancedArticleCard: FC<EnhancedArticleCardProps> = ({
         <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
           <div className="flex items-center gap-2">
             {author.avatar ? (
-              <img
+              <Image
                 src={author.avatar}
                 alt={author.displayName || 'Author'}
-                className="w-6 h-6 rounded-full"
+                width={24}
+                height={24}
+                className="rounded-full"
+                loading="lazy"
               />
             ) : (
               <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center text-white text-xs font-medium">

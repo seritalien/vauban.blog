@@ -194,7 +194,7 @@ describe('ai.ts', () => {
 
       expect(result).toEqual({
         success: false,
-        error: 'API error: 500 - Internal Server Error',
+        error: 'Erreur serveur IA (500): Internal Server Error. Réessayez.',
         code: 'API_ERROR',
       });
     });
@@ -209,7 +209,7 @@ describe('ai.ts', () => {
 
       expect(result).toEqual({
         success: false,
-        error: expect.stringContaining('Invalid response format'),
+        error: 'No content in API response. Check console for details.',
         code: 'VALIDATION_ERROR',
       });
     });
@@ -228,7 +228,7 @@ describe('ai.ts', () => {
 
       expect(result).toEqual({
         success: false,
-        error: 'No content in response',
+        error: 'No content in API response. Check console for details.',
         code: 'VALIDATION_ERROR',
       });
     });

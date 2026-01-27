@@ -1,6 +1,6 @@
 'use client';
 
-import { type FC, type ReactNode } from 'react';
+import { type FC, type ReactNode, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -11,12 +11,71 @@ export interface ArticleContentProps {
   content: string;
   /** Additional class names */
   className?: string;
+  /** Current sentence index being read aloud (-1 = none) */
+  currentSentenceIndex?: number;
+}
+
+// Split text into sentences for highlighting
+function splitIntoSentences(text: string): string[] {
+  const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+  return sentences.map(s => s.trim()).filter(Boolean);
 }
 
 /**
  * Enhanced article content renderer with improved typography and code styling.
+ * Supports sentence highlighting during text-to-speech playback.
  */
-export const ArticleContent: FC<ArticleContentProps> = ({ content, className = '' }) => {
+export const ArticleContent: FC<ArticleContentProps> = ({ content, className = '', currentSentenceIndex = -1 }) => {
+  // Ref to scroll to the active sentence
+  const activeRef = useRef<HTMLSpanElement>(null);
+
+  // Global sentence counter for the entire article
+  const sentenceCounterRef = useRef(0);
+
+  // Reset counter on each render before processing paragraphs
+  sentenceCounterRef.current = 0;
+
+  // Auto-scroll to active sentence
+  useEffect(() => {
+    if (currentSentenceIndex >= 0 && activeRef.current) {
+      activeRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }
+  }, [currentSentenceIndex]);
+
+  // Helper to render text with sentence highlighting
+  const renderTextWithSentences = (text: string): ReactNode => {
+    if (currentSentenceIndex < 0) {
+      return text;
+    }
+
+    const sentences = splitIntoSentences(text);
+    if (sentences.length === 0) return text;
+
+    return sentences.map((sentence, localIdx) => {
+      const globalIdx = sentenceCounterRef.current + localIdx;
+      const isActive = globalIdx === currentSentenceIndex;
+
+      return (
+        <span
+          key={`sentence-${globalIdx}`}
+          ref={isActive ? activeRef : null}
+          className={`sentence ${isActive ? 'sentence-active' : ''}`}
+          data-sentence-index={globalIdx}
+        >
+          {sentence}{' '}
+        </span>
+      );
+    });
+  };
+
+  // After rendering text, update the counter
+  const advanceSentenceCounter = (text: string) => {
+    const sentences = splitIntoSentences(text);
+    sentenceCounterRef.current += sentences.length;
+  };
   return (
     <div
       className={`
@@ -76,6 +135,14 @@ export const ArticleContent: FC<ArticleContentProps> = ({ content, className = '
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
         components={{
+          // Custom paragraph with sentence highlighting for TTS
+          p: ({ children, ...props }) => {
+            // Extract text from children
+            const textContent = String(children);
+            const rendered = renderTextWithSentences(textContent);
+            advanceSentenceCounter(textContent);
+            return <p {...props}>{currentSentenceIndex >= 0 ? rendered : children}</p>;
+          },
           // Add IDs to headings for anchor links
           h2: ({ children, ...props }) => {
             const text = String(children);

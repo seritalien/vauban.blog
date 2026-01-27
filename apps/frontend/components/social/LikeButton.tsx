@@ -1,17 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { useWallet } from '@/providers/wallet-provider';
 import { useToast } from '@/components/ui/Toast';
+import { usePostEngagement, useUserLikeStatus, useLikeMutation } from '@/hooks/use-engagement';
 import {
-  likePost,
-  unlikePost,
-  hasLikedPost,
-  getPostLikes,
   likeComment,
   unlikeComment,
   hasLikedComment,
 } from '@vauban/web3-utils';
+import { useState, useEffect } from 'react';
 
 interface LikeButtonProps {
   targetId: string;
@@ -28,73 +25,66 @@ export default function LikeButton({
 }: LikeButtonProps) {
   const { account, isConnected } = useWallet();
   const { showToast } = useToast();
-  const [isLiked, setIsLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(initialLikeCount);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isChecking, setIsChecking] = useState(true);
 
-  // Check initial like status
+  // For posts: use React Query hooks
+  const { data: engagement } = usePostEngagement(targetId);
+  const { data: userLiked, isLoading: isCheckingLike } = useUserLikeStatus(targetId);
+  const likeMutation = useLikeMutation(targetId);
+
+  // For comments: fall back to local state (different contract API)
+  const [commentLiked, setCommentLiked] = useState(false);
+  const [commentLoading, setCommentLoading] = useState(false);
+  const [commentChecking, setCommentChecking] = useState(targetType === 'comment');
+
   useEffect(() => {
-    async function checkLikeStatus() {
-      if (!account?.address) {
-        setIsChecking(false);
-        return;
-      }
-
-      try {
-        const addressStr = String(account.address);
-
-        if (targetType === 'post') {
-          const [liked, count] = await Promise.all([
-            hasLikedPost(targetId, addressStr),
-            getPostLikes(targetId),
-          ]);
-          setIsLiked(liked);
-          setLikeCount(count);
-        } else {
-          const liked = await hasLikedComment(targetId, addressStr);
-          setIsLiked(liked);
-        }
-      } catch (error) {
-        console.error('Error checking like status:', error);
-      } finally {
-        setIsChecking(false);
-      }
+    if (targetType !== 'comment' || !account?.address) {
+      setCommentChecking(false);
+      return;
     }
-
-    checkLikeStatus();
+    const checkComment = async () => {
+      try {
+        const liked = await hasLikedComment(targetId, String(account.address));
+        setCommentLiked(liked);
+      } catch (error) {
+        console.error('Error checking comment like:', error);
+      } finally {
+        setCommentChecking(false);
+      }
+    };
+    checkComment();
   }, [targetId, targetType, account?.address]);
+
+  // Resolved values based on target type
+  const isLiked = targetType === 'post' ? (userLiked ?? false) : commentLiked;
+  const likeCount = targetType === 'post' ? (engagement?.likes ?? initialLikeCount) : initialLikeCount;
+  const isLoading = targetType === 'post' ? likeMutation.isPending : commentLoading;
+  const isChecking = targetType === 'post' ? isCheckingLike : commentChecking;
 
   const handleLike = async () => {
     if (!account || isLoading) return;
 
     try {
-      setIsLoading(true);
-
-      if (isLiked) {
-        // Unlike
-        if (targetType === 'post') {
-          await unlikePost(account, targetId);
-        } else {
-          await unlikeComment(account, targetId);
-        }
-        setIsLiked(false);
-        setLikeCount(prev => Math.max(0, prev - 1));
+      if (targetType === 'post') {
+        await likeMutation.mutateAsync({
+          action: isLiked ? 'unlike' : 'like',
+        });
       } else {
-        // Like
-        if (targetType === 'post') {
-          await likePost(account, targetId);
+        setCommentLoading(true);
+        if (isLiked) {
+          await unlikeComment(account, targetId);
+          setCommentLiked(false);
         } else {
           await likeComment(account, targetId);
+          setCommentLiked(true);
         }
-        setIsLiked(true);
-        setLikeCount(prev => prev + 1);
       }
     } catch (error) {
       console.error('Error toggling like:', error);
       showToast(`Failed to ${isLiked ? 'unlike' : 'like'}. Please try again.`, 'error');
     } finally {
-      setIsLoading(false);
+      if (targetType === 'comment') {
+        setCommentLoading(false);
+      }
     }
   };
 

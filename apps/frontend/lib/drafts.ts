@@ -43,7 +43,56 @@ const DRAFTS_STORAGE_KEY = 'vauban_drafts';
 const SNAPSHOTS_STORAGE_KEY = 'vauban_draft_snapshots';
 const LOCK_KEY_PREFIX = 'vauban_draft_lock_';
 const MAX_SNAPSHOTS_PER_DRAFT = 5;
+const MAX_DRAFTS = 10; // Limit number of drafts to prevent quota issues
 const LOCK_STALE_THRESHOLD_MS = 60000; // 60 seconds
+
+/**
+ * Safely write to localStorage with quota handling
+ * If quota is exceeded, tries to free space by removing old data
+ */
+function safeLocalStorageSet(key: string, value: string): boolean {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'QuotaExceededError') {
+      console.warn('[Drafts] localStorage quota exceeded, cleaning up...');
+
+      // Try to free space by removing old snapshots first
+      try {
+        localStorage.removeItem(SNAPSHOTS_STORAGE_KEY);
+        console.log('[Drafts] Cleared snapshots to free space');
+      } catch {
+        // Ignore
+      }
+
+      // Try again
+      try {
+        localStorage.setItem(key, value);
+        return true;
+      } catch {
+        // Still failing, try removing oldest drafts
+        try {
+          const drafts = getDrafts();
+          if (drafts.length > 3) {
+            // Keep only the 3 most recent drafts
+            const trimmed = drafts.slice(0, 3);
+            localStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(trimmed));
+            console.log(`[Drafts] Trimmed to ${trimmed.length} drafts to free space`);
+
+            // Try one more time
+            localStorage.setItem(key, value);
+            return true;
+          }
+        } catch {
+          console.error('[Drafts] Could not free enough space');
+        }
+      }
+    }
+    console.error('[Drafts] Failed to save to localStorage:', error);
+    return false;
+  }
+}
 
 // Tab instance ID (unique per browser tab)
 let tabInstanceId: string | null = null;
@@ -66,7 +115,7 @@ export function getDraft(id: string): Draft | null {
 }
 
 export function saveDraft(draft: Omit<Draft, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Draft {
-  const drafts = getDrafts();
+  let drafts = getDrafts();
   const now = new Date().toISOString();
 
   if (draft.id) {
@@ -80,7 +129,7 @@ export function saveDraft(draft: Omit<Draft, 'id' | 'createdAt' | 'updatedAt'> &
         updatedAt: now,
       };
       drafts[index] = updated;
-      localStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(drafts));
+      safeLocalStorageSet(DRAFTS_STORAGE_KEY, JSON.stringify(drafts));
       return updated;
     }
   }
@@ -94,7 +143,14 @@ export function saveDraft(draft: Omit<Draft, 'id' | 'createdAt' | 'updatedAt'> &
   };
 
   drafts.unshift(newDraft);
-  localStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(drafts));
+
+  // Limit number of drafts to prevent quota issues
+  if (drafts.length > MAX_DRAFTS) {
+    drafts = drafts.slice(0, MAX_DRAFTS);
+    console.log(`[Drafts] Trimmed to ${MAX_DRAFTS} drafts`);
+  }
+
+  safeLocalStorageSet(DRAFTS_STORAGE_KEY, JSON.stringify(drafts));
   return newDraft;
 }
 
@@ -103,7 +159,7 @@ export function deleteDraft(id: string): boolean {
   const filtered = drafts.filter((d) => d.id !== id);
 
   if (filtered.length !== drafts.length) {
-    localStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(filtered));
+    safeLocalStorageSet(DRAFTS_STORAGE_KEY, JSON.stringify(filtered));
     return true;
   }
   return false;

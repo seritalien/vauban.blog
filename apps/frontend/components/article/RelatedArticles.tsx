@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { usePosts, VerifiedPost } from '@/hooks/use-posts';
@@ -13,7 +14,7 @@ interface RelatedArticlesProps {
 }
 
 export default function RelatedArticles({ currentPostId, tags, maxArticles = 3 }: RelatedArticlesProps) {
-  const { posts, isLoading } = usePosts(50, 0);
+  const { posts, isLoading } = usePosts(20, 0);
 
   const relatedPosts = useMemo(() => {
     if (!posts.length || !tags.length) return [];
@@ -55,11 +56,16 @@ function RelatedArticleCard({ post, matchingTags }: { post: VerifiedPost; matchi
   return (
     <article className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden hover:shadow-lg dark:hover:shadow-gray-800 transition-shadow bg-white dark:bg-gray-800">
       {post.coverImage && (
-        <img
-          src={post.coverImage}
-          alt={post.title}
-          className="w-full h-32 object-cover"
-        />
+        <div className="relative h-32">
+          <Image
+            src={post.coverImage}
+            alt={post.title}
+            fill
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            className="object-cover"
+            loading="lazy"
+          />
+        </div>
       )}
       <div className="p-4">
         {/* Matching tags */}

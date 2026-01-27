@@ -4,6 +4,7 @@ import { WalletProvider } from '@/providers/wallet-provider';
 import { ThemeProvider } from '@/providers/theme-provider';
 import { QueryProvider } from '@/providers/query-provider';
 import { ToastProvider } from '@/components/ui/Toast';
+import { SessionProvider } from '@/components/auth';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import { ServiceWorkerRegistration } from '@/components/pwa/ServiceWorkerRegistration';
@@ -73,25 +74,27 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         <meta name="theme-color" content="#6366f1" />
-        <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+        <link rel="apple-touch-icon" href="/icons/icon.svg" />
       </head>
       <body className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors">
         <ServiceWorkerRegistration />
-        <ThemeProvider>
-          <QueryProvider>
-            <WalletProvider>
-              <ToastProvider>
-                <div className="min-h-screen flex flex-col">
-                  <Header />
-                  <main className="flex-1">
-                    {children}
-                  </main>
-                  <Footer />
-                </div>
-              </ToastProvider>
-            </WalletProvider>
-          </QueryProvider>
-        </ThemeProvider>
+        <SessionProvider>
+          <ThemeProvider>
+            <QueryProvider>
+              <WalletProvider>
+                <ToastProvider>
+                  <div className="min-h-screen flex flex-col">
+                    <Header />
+                    <main className="flex-1">
+                      {children}
+                    </main>
+                    <Footer />
+                  </div>
+                </ToastProvider>
+              </WalletProvider>
+            </QueryProvider>
+          </ThemeProvider>
+        </SessionProvider>
       </body>
     </html>
   );

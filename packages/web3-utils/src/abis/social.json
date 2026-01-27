@@ -1,884 +1,882 @@
-{
-  "abi": [
-    {
-      "type": "impl",
-      "name": "SocialImpl",
-      "interface_name": "vauban_blog::social::ISocial"
-    },
-    {
-      "type": "enum",
-      "name": "core::bool",
-      "variants": [
-        {
-          "name": "False",
-          "type": "()"
-        },
-        {
-          "name": "True",
-          "type": "()"
-        }
-      ]
-    },
-    {
-      "type": "struct",
-      "name": "vauban_blog::social::Social::Comment",
-      "members": [
-        {
-          "name": "id",
-          "type": "core::integer::u64"
-        },
-        {
-          "name": "post_id",
-          "type": "core::integer::u64"
-        },
-        {
-          "name": "author",
-          "type": "core::starknet::contract_address::ContractAddress"
-        },
-        {
-          "name": "content_hash",
-          "type": "core::felt252"
-        },
-        {
-          "name": "parent_comment_id",
-          "type": "core::integer::u64"
-        },
-        {
-          "name": "created_at",
-          "type": "core::integer::u64"
-        },
-        {
-          "name": "is_deleted",
-          "type": "core::bool"
-        },
-        {
-          "name": "like_count",
-          "type": "core::integer::u64"
-        }
-      ]
-    },
-    {
-      "type": "interface",
-      "name": "vauban_blog::social::ISocial",
-      "items": [
-        {
-          "type": "function",
-          "name": "add_comment",
-          "inputs": [
-            {
-              "name": "post_id",
-              "type": "core::integer::u64"
-            },
-            {
-              "name": "content_hash",
-              "type": "core::felt252"
-            },
-            {
-              "name": "parent_comment_id",
-              "type": "core::integer::u64"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "core::integer::u64"
-            }
-          ],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "add_comment_with_session_key",
-          "inputs": [
-            {
-              "name": "post_id",
-              "type": "core::integer::u64"
-            },
-            {
-              "name": "content_hash",
-              "type": "core::felt252"
-            },
-            {
-              "name": "parent_comment_id",
-              "type": "core::integer::u64"
-            },
-            {
-              "name": "session_public_key",
-              "type": "core::felt252"
-            },
-            {
-              "name": "on_behalf_of",
-              "type": "core::starknet::contract_address::ContractAddress"
-            },
-            {
-              "name": "nonce",
-              "type": "core::integer::u64"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "core::integer::u64"
-            }
-          ],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "get_session_key_nonce",
-          "inputs": [
-            {
-              "name": "session_public_key",
-              "type": "core::felt252"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "core::integer::u64"
-            }
-          ],
-          "state_mutability": "view"
-        },
-        {
-          "type": "function",
-          "name": "like_post",
-          "inputs": [
-            {
-              "name": "post_id",
-              "type": "core::integer::u64"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "core::bool"
-            }
-          ],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "unlike_post",
-          "inputs": [
-            {
-              "name": "post_id",
-              "type": "core::integer::u64"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "core::bool"
-            }
-          ],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "like_comment",
-          "inputs": [
-            {
-              "name": "comment_id",
-              "type": "core::integer::u64"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "core::bool"
-            }
-          ],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "unlike_comment",
-          "inputs": [
-            {
-              "name": "comment_id",
-              "type": "core::integer::u64"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "core::bool"
-            }
-          ],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "report_comment",
-          "inputs": [
-            {
-              "name": "comment_id",
-              "type": "core::integer::u64"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "core::bool"
-            }
-          ],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "delete_comment",
-          "inputs": [
-            {
-              "name": "comment_id",
-              "type": "core::integer::u64"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "core::bool"
-            }
-          ],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "ban_user",
-          "inputs": [
-            {
-              "name": "user",
-              "type": "core::starknet::contract_address::ContractAddress"
-            }
-          ],
-          "outputs": [],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "unban_user",
-          "inputs": [
-            {
-              "name": "user",
-              "type": "core::starknet::contract_address::ContractAddress"
-            }
-          ],
-          "outputs": [],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "is_banned",
-          "inputs": [
-            {
-              "name": "user",
-              "type": "core::starknet::contract_address::ContractAddress"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "core::bool"
-            }
-          ],
-          "state_mutability": "view"
-        },
-        {
-          "type": "function",
-          "name": "get_comment",
-          "inputs": [
-            {
-              "name": "comment_id",
-              "type": "core::integer::u64"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "vauban_blog::social::Social::Comment"
-            }
-          ],
-          "state_mutability": "view"
-        },
-        {
-          "type": "function",
-          "name": "get_comments_for_post",
-          "inputs": [
-            {
-              "name": "post_id",
-              "type": "core::integer::u64"
-            },
-            {
-              "name": "limit",
-              "type": "core::integer::u64"
-            },
-            {
-              "name": "offset",
-              "type": "core::integer::u64"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "core::array::Array::<vauban_blog::social::Social::Comment>"
-            }
-          ],
-          "state_mutability": "view"
-        },
-        {
-          "type": "function",
-          "name": "get_comment_count_for_post",
-          "inputs": [
-            {
-              "name": "post_id",
-              "type": "core::integer::u64"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "core::integer::u64"
-            }
-          ],
-          "state_mutability": "view"
-        },
-        {
-          "type": "function",
-          "name": "get_post_likes",
-          "inputs": [
-            {
-              "name": "post_id",
-              "type": "core::integer::u64"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "core::integer::u64"
-            }
-          ],
-          "state_mutability": "view"
-        },
-        {
-          "type": "function",
-          "name": "has_liked_post",
-          "inputs": [
-            {
-              "name": "post_id",
-              "type": "core::integer::u64"
-            },
-            {
-              "name": "user",
-              "type": "core::starknet::contract_address::ContractAddress"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "core::bool"
-            }
-          ],
-          "state_mutability": "view"
-        },
-        {
-          "type": "function",
-          "name": "has_liked_comment",
-          "inputs": [
-            {
-              "name": "comment_id",
-              "type": "core::integer::u64"
-            },
-            {
-              "name": "user",
-              "type": "core::starknet::contract_address::ContractAddress"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "core::bool"
-            }
-          ],
-          "state_mutability": "view"
-        },
-        {
-          "type": "function",
-          "name": "get_report_count",
-          "inputs": [
-            {
-              "name": "comment_id",
-              "type": "core::integer::u64"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "core::integer::u64"
-            }
-          ],
-          "state_mutability": "view"
-        },
-        {
-          "type": "function",
-          "name": "add_moderator",
-          "inputs": [
-            {
-              "name": "moderator",
-              "type": "core::starknet::contract_address::ContractAddress"
-            }
-          ],
-          "outputs": [],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "remove_moderator",
-          "inputs": [
-            {
-              "name": "moderator",
-              "type": "core::starknet::contract_address::ContractAddress"
-            }
-          ],
-          "outputs": [],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "is_moderator",
-          "inputs": [
-            {
-              "name": "account",
-              "type": "core::starknet::contract_address::ContractAddress"
-            }
-          ],
-          "outputs": [
-            {
-              "type": "core::bool"
-            }
-          ],
-          "state_mutability": "view"
-        },
-        {
-          "type": "function",
-          "name": "pause",
-          "inputs": [],
-          "outputs": [],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "unpause",
-          "inputs": [],
-          "outputs": [],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "is_paused",
-          "inputs": [],
-          "outputs": [
-            {
-              "type": "core::bool"
-            }
-          ],
-          "state_mutability": "view"
-        },
-        {
-          "type": "function",
-          "name": "set_comment_cooldown",
-          "inputs": [
-            {
-              "name": "cooldown_seconds",
-              "type": "core::integer::u64"
-            }
-          ],
-          "outputs": [],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "get_comment_cooldown",
-          "inputs": [],
-          "outputs": [
-            {
-              "type": "core::integer::u64"
-            }
-          ],
-          "state_mutability": "view"
-        },
-        {
-          "type": "function",
-          "name": "get_owner",
-          "inputs": [],
-          "outputs": [
-            {
-              "type": "core::starknet::contract_address::ContractAddress"
-            }
-          ],
-          "state_mutability": "view"
-        },
-        {
-          "type": "function",
-          "name": "set_session_key_manager",
-          "inputs": [
-            {
-              "name": "manager",
-              "type": "core::starknet::contract_address::ContractAddress"
-            }
-          ],
-          "outputs": [],
-          "state_mutability": "external"
-        },
-        {
-          "type": "function",
-          "name": "get_session_key_manager",
-          "inputs": [],
-          "outputs": [
-            {
-              "type": "core::starknet::contract_address::ContractAddress"
-            }
-          ],
-          "state_mutability": "view"
-        }
-      ]
-    },
-    {
-      "type": "constructor",
-      "name": "constructor",
-      "inputs": [
-        {
-          "name": "owner",
-          "type": "core::starknet::contract_address::ContractAddress"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "vauban_blog::social::Social::CommentAdded",
-      "kind": "struct",
-      "members": [
-        {
-          "name": "comment_id",
-          "type": "core::integer::u64",
-          "kind": "key"
-        },
-        {
-          "name": "post_id",
-          "type": "core::integer::u64",
-          "kind": "key"
-        },
-        {
-          "name": "author",
-          "type": "core::starknet::contract_address::ContractAddress",
-          "kind": "key"
-        },
-        {
-          "name": "parent_comment_id",
-          "type": "core::integer::u64",
-          "kind": "data"
-        },
-        {
-          "name": "content_hash",
-          "type": "core::felt252",
-          "kind": "data"
-        },
-        {
-          "name": "created_at",
-          "type": "core::integer::u64",
-          "kind": "data"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "vauban_blog::social::Social::CommentDeleted",
-      "kind": "struct",
-      "members": [
-        {
-          "name": "comment_id",
-          "type": "core::integer::u64",
-          "kind": "key"
-        },
-        {
-          "name": "deleted_by",
-          "type": "core::starknet::contract_address::ContractAddress",
-          "kind": "data"
-        },
-        {
-          "name": "deleted_at",
-          "type": "core::integer::u64",
-          "kind": "data"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "vauban_blog::social::Social::CommentReported",
-      "kind": "struct",
-      "members": [
-        {
-          "name": "comment_id",
-          "type": "core::integer::u64",
-          "kind": "key"
-        },
-        {
-          "name": "reporter",
-          "type": "core::starknet::contract_address::ContractAddress",
-          "kind": "key"
-        },
-        {
-          "name": "report_count",
-          "type": "core::integer::u64",
-          "kind": "data"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "vauban_blog::social::Social::PostLiked",
-      "kind": "struct",
-      "members": [
-        {
-          "name": "post_id",
-          "type": "core::integer::u64",
-          "kind": "key"
-        },
-        {
-          "name": "user",
-          "type": "core::starknet::contract_address::ContractAddress",
-          "kind": "key"
-        },
-        {
-          "name": "total_likes",
-          "type": "core::integer::u64",
-          "kind": "data"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "vauban_blog::social::Social::PostUnliked",
-      "kind": "struct",
-      "members": [
-        {
-          "name": "post_id",
-          "type": "core::integer::u64",
-          "kind": "key"
-        },
-        {
-          "name": "user",
-          "type": "core::starknet::contract_address::ContractAddress",
-          "kind": "key"
-        },
-        {
-          "name": "total_likes",
-          "type": "core::integer::u64",
-          "kind": "data"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "vauban_blog::social::Social::CommentLiked",
-      "kind": "struct",
-      "members": [
-        {
-          "name": "comment_id",
-          "type": "core::integer::u64",
-          "kind": "key"
-        },
-        {
-          "name": "user",
-          "type": "core::starknet::contract_address::ContractAddress",
-          "kind": "key"
-        },
-        {
-          "name": "total_likes",
-          "type": "core::integer::u64",
-          "kind": "data"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "vauban_blog::social::Social::CommentUnliked",
-      "kind": "struct",
-      "members": [
-        {
-          "name": "comment_id",
-          "type": "core::integer::u64",
-          "kind": "key"
-        },
-        {
-          "name": "user",
-          "type": "core::starknet::contract_address::ContractAddress",
-          "kind": "key"
-        },
-        {
-          "name": "total_likes",
-          "type": "core::integer::u64",
-          "kind": "data"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "vauban_blog::social::Social::UserBanned",
-      "kind": "struct",
-      "members": [
-        {
-          "name": "user",
-          "type": "core::starknet::contract_address::ContractAddress",
-          "kind": "key"
-        },
-        {
-          "name": "banned_by",
-          "type": "core::starknet::contract_address::ContractAddress",
-          "kind": "data"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "vauban_blog::social::Social::UserUnbanned",
-      "kind": "struct",
-      "members": [
-        {
-          "name": "user",
-          "type": "core::starknet::contract_address::ContractAddress",
-          "kind": "key"
-        },
-        {
-          "name": "unbanned_by",
-          "type": "core::starknet::contract_address::ContractAddress",
-          "kind": "data"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "vauban_blog::social::Social::ModeratorAdded",
-      "kind": "struct",
-      "members": [
-        {
-          "name": "moderator",
-          "type": "core::starknet::contract_address::ContractAddress",
-          "kind": "key"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "vauban_blog::social::Social::ModeratorRemoved",
-      "kind": "struct",
-      "members": [
-        {
-          "name": "moderator",
-          "type": "core::starknet::contract_address::ContractAddress",
-          "kind": "key"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "vauban_blog::social::Social::Paused",
-      "kind": "struct",
-      "members": [
-        {
-          "name": "timestamp",
-          "type": "core::integer::u64",
-          "kind": "data"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "vauban_blog::social::Social::Unpaused",
-      "kind": "struct",
-      "members": [
-        {
-          "name": "timestamp",
-          "type": "core::integer::u64",
-          "kind": "data"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "vauban_blog::social::Social::SessionKeyManagerUpdated",
-      "kind": "struct",
-      "members": [
-        {
-          "name": "old_manager",
-          "type": "core::starknet::contract_address::ContractAddress",
-          "kind": "data"
-        },
-        {
-          "name": "new_manager",
-          "type": "core::starknet::contract_address::ContractAddress",
-          "kind": "data"
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "name": "vauban_blog::social::Social::Event",
-      "kind": "enum",
-      "variants": [
-        {
-          "name": "CommentAdded",
-          "type": "vauban_blog::social::Social::CommentAdded",
-          "kind": "nested"
-        },
-        {
-          "name": "CommentDeleted",
-          "type": "vauban_blog::social::Social::CommentDeleted",
-          "kind": "nested"
-        },
-        {
-          "name": "CommentReported",
-          "type": "vauban_blog::social::Social::CommentReported",
-          "kind": "nested"
-        },
-        {
-          "name": "PostLiked",
-          "type": "vauban_blog::social::Social::PostLiked",
-          "kind": "nested"
-        },
-        {
-          "name": "PostUnliked",
-          "type": "vauban_blog::social::Social::PostUnliked",
-          "kind": "nested"
-        },
-        {
-          "name": "CommentLiked",
-          "type": "vauban_blog::social::Social::CommentLiked",
-          "kind": "nested"
-        },
-        {
-          "name": "CommentUnliked",
-          "type": "vauban_blog::social::Social::CommentUnliked",
-          "kind": "nested"
-        },
-        {
-          "name": "UserBanned",
-          "type": "vauban_blog::social::Social::UserBanned",
-          "kind": "nested"
-        },
-        {
-          "name": "UserUnbanned",
-          "type": "vauban_blog::social::Social::UserUnbanned",
-          "kind": "nested"
-        },
-        {
-          "name": "ModeratorAdded",
-          "type": "vauban_blog::social::Social::ModeratorAdded",
-          "kind": "nested"
-        },
-        {
-          "name": "ModeratorRemoved",
-          "type": "vauban_blog::social::Social::ModeratorRemoved",
-          "kind": "nested"
-        },
-        {
-          "name": "Paused",
-          "type": "vauban_blog::social::Social::Paused",
-          "kind": "nested"
-        },
-        {
-          "name": "Unpaused",
-          "type": "vauban_blog::social::Social::Unpaused",
-          "kind": "nested"
-        },
-        {
-          "name": "SessionKeyManagerUpdated",
-          "type": "vauban_blog::social::Social::SessionKeyManagerUpdated",
-          "kind": "nested"
-        }
-      ]
-    }
-  ]
-}
+[
+  {
+    "type": "impl",
+    "name": "SocialImpl",
+    "interface_name": "vauban_blog::social::ISocial"
+  },
+  {
+    "type": "enum",
+    "name": "core::bool",
+    "variants": [
+      {
+        "name": "False",
+        "type": "()"
+      },
+      {
+        "name": "True",
+        "type": "()"
+      }
+    ]
+  },
+  {
+    "type": "struct",
+    "name": "vauban_blog::social::Social::Comment",
+    "members": [
+      {
+        "name": "id",
+        "type": "core::integer::u64"
+      },
+      {
+        "name": "post_id",
+        "type": "core::integer::u64"
+      },
+      {
+        "name": "author",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "content_hash",
+        "type": "core::felt252"
+      },
+      {
+        "name": "parent_comment_id",
+        "type": "core::integer::u64"
+      },
+      {
+        "name": "created_at",
+        "type": "core::integer::u64"
+      },
+      {
+        "name": "is_deleted",
+        "type": "core::bool"
+      },
+      {
+        "name": "like_count",
+        "type": "core::integer::u64"
+      }
+    ]
+  },
+  {
+    "type": "interface",
+    "name": "vauban_blog::social::ISocial",
+    "items": [
+      {
+        "type": "function",
+        "name": "add_comment",
+        "inputs": [
+          {
+            "name": "post_id",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "content_hash",
+            "type": "core::felt252"
+          },
+          {
+            "name": "parent_comment_id",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::integer::u64"
+          }
+        ],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "add_comment_with_session_key",
+        "inputs": [
+          {
+            "name": "post_id",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "content_hash",
+            "type": "core::felt252"
+          },
+          {
+            "name": "parent_comment_id",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "session_public_key",
+            "type": "core::felt252"
+          },
+          {
+            "name": "on_behalf_of",
+            "type": "core::starknet::contract_address::ContractAddress"
+          },
+          {
+            "name": "nonce",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::integer::u64"
+          }
+        ],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "get_session_key_nonce",
+        "inputs": [
+          {
+            "name": "session_public_key",
+            "type": "core::felt252"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::integer::u64"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "like_post",
+        "inputs": [
+          {
+            "name": "post_id",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "unlike_post",
+        "inputs": [
+          {
+            "name": "post_id",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "like_comment",
+        "inputs": [
+          {
+            "name": "comment_id",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "unlike_comment",
+        "inputs": [
+          {
+            "name": "comment_id",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "report_comment",
+        "inputs": [
+          {
+            "name": "comment_id",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "delete_comment",
+        "inputs": [
+          {
+            "name": "comment_id",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "ban_user",
+        "inputs": [
+          {
+            "name": "user",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "unban_user",
+        "inputs": [
+          {
+            "name": "user",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "is_banned",
+        "inputs": [
+          {
+            "name": "user",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_comment",
+        "inputs": [
+          {
+            "name": "comment_id",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "vauban_blog::social::Social::Comment"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_comments_for_post",
+        "inputs": [
+          {
+            "name": "post_id",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "limit",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "offset",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::array::Array::<vauban_blog::social::Social::Comment>"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_comment_count_for_post",
+        "inputs": [
+          {
+            "name": "post_id",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::integer::u64"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_post_likes",
+        "inputs": [
+          {
+            "name": "post_id",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::integer::u64"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "has_liked_post",
+        "inputs": [
+          {
+            "name": "post_id",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "user",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "has_liked_comment",
+        "inputs": [
+          {
+            "name": "comment_id",
+            "type": "core::integer::u64"
+          },
+          {
+            "name": "user",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_report_count",
+        "inputs": [
+          {
+            "name": "comment_id",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::integer::u64"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "add_moderator",
+        "inputs": [
+          {
+            "name": "moderator",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "remove_moderator",
+        "inputs": [
+          {
+            "name": "moderator",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "is_moderator",
+        "inputs": [
+          {
+            "name": "account",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "pause",
+        "inputs": [],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "unpause",
+        "inputs": [],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "is_paused",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "set_comment_cooldown",
+        "inputs": [
+          {
+            "name": "cooldown_seconds",
+            "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "get_comment_cooldown",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::integer::u64"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_owner",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "set_session_key_manager",
+        "inputs": [
+          {
+            "name": "manager",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "get_session_key_manager",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "state_mutability": "view"
+      }
+    ]
+  },
+  {
+    "type": "constructor",
+    "name": "constructor",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "core::starknet::contract_address::ContractAddress"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vauban_blog::social::Social::CommentAdded",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "comment_id",
+        "type": "core::integer::u64",
+        "kind": "key"
+      },
+      {
+        "name": "post_id",
+        "type": "core::integer::u64",
+        "kind": "key"
+      },
+      {
+        "name": "author",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      },
+      {
+        "name": "parent_comment_id",
+        "type": "core::integer::u64",
+        "kind": "data"
+      },
+      {
+        "name": "content_hash",
+        "type": "core::felt252",
+        "kind": "data"
+      },
+      {
+        "name": "created_at",
+        "type": "core::integer::u64",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vauban_blog::social::Social::CommentDeleted",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "comment_id",
+        "type": "core::integer::u64",
+        "kind": "key"
+      },
+      {
+        "name": "deleted_by",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "data"
+      },
+      {
+        "name": "deleted_at",
+        "type": "core::integer::u64",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vauban_blog::social::Social::CommentReported",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "comment_id",
+        "type": "core::integer::u64",
+        "kind": "key"
+      },
+      {
+        "name": "reporter",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      },
+      {
+        "name": "report_count",
+        "type": "core::integer::u64",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vauban_blog::social::Social::PostLiked",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "post_id",
+        "type": "core::integer::u64",
+        "kind": "key"
+      },
+      {
+        "name": "user",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      },
+      {
+        "name": "total_likes",
+        "type": "core::integer::u64",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vauban_blog::social::Social::PostUnliked",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "post_id",
+        "type": "core::integer::u64",
+        "kind": "key"
+      },
+      {
+        "name": "user",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      },
+      {
+        "name": "total_likes",
+        "type": "core::integer::u64",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vauban_blog::social::Social::CommentLiked",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "comment_id",
+        "type": "core::integer::u64",
+        "kind": "key"
+      },
+      {
+        "name": "user",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      },
+      {
+        "name": "total_likes",
+        "type": "core::integer::u64",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vauban_blog::social::Social::CommentUnliked",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "comment_id",
+        "type": "core::integer::u64",
+        "kind": "key"
+      },
+      {
+        "name": "user",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      },
+      {
+        "name": "total_likes",
+        "type": "core::integer::u64",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vauban_blog::social::Social::UserBanned",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "user",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      },
+      {
+        "name": "banned_by",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vauban_blog::social::Social::UserUnbanned",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "user",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      },
+      {
+        "name": "unbanned_by",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vauban_blog::social::Social::ModeratorAdded",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "moderator",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vauban_blog::social::Social::ModeratorRemoved",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "moderator",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vauban_blog::social::Social::Paused",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "timestamp",
+        "type": "core::integer::u64",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vauban_blog::social::Social::Unpaused",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "timestamp",
+        "type": "core::integer::u64",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vauban_blog::social::Social::SessionKeyManagerUpdated",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "old_manager",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "data"
+      },
+      {
+        "name": "new_manager",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "vauban_blog::social::Social::Event",
+    "kind": "enum",
+    "variants": [
+      {
+        "name": "CommentAdded",
+        "type": "vauban_blog::social::Social::CommentAdded",
+        "kind": "nested"
+      },
+      {
+        "name": "CommentDeleted",
+        "type": "vauban_blog::social::Social::CommentDeleted",
+        "kind": "nested"
+      },
+      {
+        "name": "CommentReported",
+        "type": "vauban_blog::social::Social::CommentReported",
+        "kind": "nested"
+      },
+      {
+        "name": "PostLiked",
+        "type": "vauban_blog::social::Social::PostLiked",
+        "kind": "nested"
+      },
+      {
+        "name": "PostUnliked",
+        "type": "vauban_blog::social::Social::PostUnliked",
+        "kind": "nested"
+      },
+      {
+        "name": "CommentLiked",
+        "type": "vauban_blog::social::Social::CommentLiked",
+        "kind": "nested"
+      },
+      {
+        "name": "CommentUnliked",
+        "type": "vauban_blog::social::Social::CommentUnliked",
+        "kind": "nested"
+      },
+      {
+        "name": "UserBanned",
+        "type": "vauban_blog::social::Social::UserBanned",
+        "kind": "nested"
+      },
+      {
+        "name": "UserUnbanned",
+        "type": "vauban_blog::social::Social::UserUnbanned",
+        "kind": "nested"
+      },
+      {
+        "name": "ModeratorAdded",
+        "type": "vauban_blog::social::Social::ModeratorAdded",
+        "kind": "nested"
+      },
+      {
+        "name": "ModeratorRemoved",
+        "type": "vauban_blog::social::Social::ModeratorRemoved",
+        "kind": "nested"
+      },
+      {
+        "name": "Paused",
+        "type": "vauban_blog::social::Social::Paused",
+        "kind": "nested"
+      },
+      {
+        "name": "Unpaused",
+        "type": "vauban_blog::social::Social::Unpaused",
+        "kind": "nested"
+      },
+      {
+        "name": "SessionKeyManagerUpdated",
+        "type": "vauban_blog::social::Social::SessionKeyManagerUpdated",
+        "kind": "nested"
+      }
+    ]
+  }
+]

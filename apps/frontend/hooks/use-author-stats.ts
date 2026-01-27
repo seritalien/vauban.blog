@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { usePosts, VerifiedPost } from '@/hooks/use-posts';
-import { getPostLikes, getCommentsForPost } from '@vauban/web3-utils';
-import { toAddressString } from '@/lib/profiles';
+import { useMemo } from 'react';
+import { usePosts, type VerifiedPost } from '@/hooks/use-posts';
+import { useBatchEngagement } from '@/hooks/use-engagement';
+import { normalizeAddress } from '@/lib/profiles';
 
 // Author statistics interface
 export interface AuthorStats {
@@ -46,38 +46,63 @@ function calculatePublicationFrequency(postDates: Date[]): string {
 }
 
 /**
- * Hook to fetch author statistics including total likes and comments
+ * Hook to fetch author statistics including total likes and comments.
+ *
+ * Uses the batch engagement API (1 HTTP call) instead of N×2 direct RPC calls.
  */
 export function useAuthorStats(authorAddress: string) {
-  const [stats, setStats] = useState<AuthorStats | null>(null);
-  const [postsWithEngagement, setPostsWithEngagement] = useState<PostWithEngagement[]>([]);
-  const [isLoadingEngagement, setIsLoadingEngagement] = useState(false);
-  const [engagementError, setEngagementError] = useState<string | null>(null);
-
-  // Fetch all posts
+  // Fetch all posts (shared React Query cache)
   const { posts, isLoading: isLoadingPosts, error: postsError } = usePosts(100, 0);
 
   // Filter posts by this author
   const authorPosts = useMemo(() => {
     if (!authorAddress) return [];
-    const normalizedAddress = authorAddress.toLowerCase();
+    const normalizedAuthor = normalizeAddress(authorAddress);
     return posts.filter(
-      (post) => toAddressString(post.author) === normalizedAddress
+      (post) => normalizeAddress(post.author) === normalizedAuthor
     );
   }, [posts, authorAddress]);
 
-  // Calculate basic stats from posts
-  const basicStats = useMemo(() => {
+  // Stable array of post IDs for the batch engagement hook
+  const authorPostIds = useMemo(
+    () => authorPosts.map((p) => p.id),
+    [authorPosts],
+  );
+
+  // Batch fetch engagement data — single HTTP call replaces N×2 RPC calls
+  const {
+    data: engagementMap,
+    isLoading: isLoadingEngagement,
+    error: engagementError,
+  } = useBatchEngagement(authorPostIds);
+
+  // Merge engagement data onto posts
+  const postsWithEngagement: PostWithEngagement[] = useMemo(() => {
+    if (!engagementMap) return [];
+    return authorPosts.map((post) => {
+      const engagement = engagementMap[post.id];
+      return {
+        ...post,
+        likeCount: engagement?.likes ?? 0,
+        commentCount: engagement?.comments ?? 0,
+      };
+    });
+  }, [authorPosts, engagementMap]);
+
+  // Calculate stats
+  const stats: AuthorStats | null = useMemo(() => {
     if (authorPosts.length === 0) {
       return {
         totalPosts: 0,
+        totalLikes: 0,
+        totalComments: 0,
         memberSince: null,
         publicationFrequency: 'No posts yet',
         recentPostDates: [],
       };
     }
 
-    // Sort posts by creation date
+    // Sort posts by creation date ascending
     const sortedPosts = [...authorPosts].sort(
       (a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0)
     );
@@ -86,81 +111,18 @@ export function useAuthorStats(authorAddress: string) {
       .filter((p) => p.createdAt)
       .map((p) => p.createdAt as Date);
 
+    const totalLikes = postsWithEngagement.reduce((sum, p) => sum + p.likeCount, 0);
+    const totalComments = postsWithEngagement.reduce((sum, p) => sum + p.commentCount, 0);
+
     return {
       totalPosts: authorPosts.length,
+      totalLikes,
+      totalComments,
       memberSince: postDates[0] ?? null,
       publicationFrequency: calculatePublicationFrequency(postDates),
-      recentPostDates: postDates.slice(-10), // Last 10 posts for timeline
+      recentPostDates: postDates.slice(-10),
     };
-  }, [authorPosts]);
-
-  // Fetch engagement data (likes and comments) for each post
-  useEffect(() => {
-    async function loadEngagement() {
-      if (authorPosts.length === 0) {
-        setPostsWithEngagement([]);
-        setStats({
-          ...basicStats,
-          totalLikes: 0,
-          totalComments: 0,
-        });
-        return;
-      }
-
-      setIsLoadingEngagement(true);
-      setEngagementError(null);
-
-      try {
-        const postsWithData = await Promise.all(
-          authorPosts.map(async (post) => {
-            try {
-              const [likeCount, comments] = await Promise.all([
-                getPostLikes(post.id),
-                getCommentsForPost(post.id, 100, 0), // Get comments (max 100)
-              ]);
-              return {
-                ...post,
-                likeCount,
-                commentCount: comments.filter((c) => !c.isDeleted).length,
-              };
-            } catch (err) {
-              console.warn(`Error fetching engagement for post ${post.id}:`, err);
-              return {
-                ...post,
-                likeCount: 0,
-                commentCount: 0,
-              };
-            }
-          })
-        );
-
-        setPostsWithEngagement(postsWithData);
-
-        // Calculate totals
-        const totalLikes = postsWithData.reduce((sum, p) => sum + p.likeCount, 0);
-        const totalComments = postsWithData.reduce((sum, p) => sum + p.commentCount, 0);
-
-        setStats({
-          ...basicStats,
-          totalLikes,
-          totalComments,
-        });
-      } catch (err) {
-        console.error('Error loading engagement data:', err);
-        setEngagementError(err instanceof Error ? err.message : 'Failed to load engagement data');
-        // Still set stats with zeros if engagement fails
-        setStats({
-          ...basicStats,
-          totalLikes: 0,
-          totalComments: 0,
-        });
-      } finally {
-        setIsLoadingEngagement(false);
-      }
-    }
-
-    loadEngagement();
-  }, [authorPosts, basicStats]);
+  }, [authorPosts, postsWithEngagement]);
 
   // Get featured posts (top 3 by likes)
   const featuredPosts = useMemo(() => {
@@ -184,6 +146,6 @@ export function useAuthorStats(authorAddress: string) {
     recentActivity,
     isLoading: isLoadingPosts || isLoadingEngagement,
     isLoadingEngagement,
-    error: postsError ?? engagementError,
+    error: postsError ?? (engagementError instanceof Error ? engagementError.message : null),
   };
 }

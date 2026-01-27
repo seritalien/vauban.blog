@@ -122,17 +122,17 @@ export const TEXT_PROVIDERS: Record<TextProvider, TextProviderConfig> = {
   openrouter: {
     name: 'OpenRouter (modèles 100% gratuits)',
     // ONLY FREE models - all must end with :free
-    // See: https://openrouter.ai/models?q=:free
+    // See: https://openrouter.ai/collections/free-models
     models: [
       // Google Gemini (best performance/speed, 100% free)
-      'google/gemini-2.0-flash-exp:free',      // Fastest, best quality (Jan 2026)
-      'google/gemini-2.5-flash-preview-05-20:free', // Alternative
-      // Meta Llama (high quality, slower)
+      'google/gemini-2.0-flash-exp:free',      // Fastest, best quality, 1M context
+      // Meta Llama (high quality)
       'meta-llama/llama-3.3-70b-instruct:free', // Excellent quality, good French
+      'meta-llama/llama-4-scout:free',          // Latest Llama 4
       // Mistral (good French support)
       'mistralai/mistral-small-3.1-24b-instruct:free',
-      // Qwen (large context)
-      'qwen/qwen3-235b-a22b:free',
+      // DeepSeek (good reasoning)
+      'deepseek/deepseek-chat-v3-0324:free',
     ],
     baseUrl: 'https://openrouter.ai/api/v1',
     latency: '~100-500ms',
@@ -167,12 +167,13 @@ export const OPENROUTER_MODEL_BY_TASK: Record<AITaskType, string> = {
 };
 
 // Fallback free models if primary fails (in order of preference)
+// See: https://openrouter.ai/collections/free-models
 export const OPENROUTER_FREE_FALLBACKS: string[] = [
-  'google/gemini-2.0-flash-exp:free',      // Best free model currently
-  'google/gemini-2.5-flash-preview-05-20:free', // Alternative Gemini
-  'meta-llama/llama-3.3-70b-instruct:free', // High quality, slower
+  'google/gemini-2.0-flash-exp:free',      // Best free model, 1M context
+  'meta-llama/llama-3.3-70b-instruct:free', // High quality, good French
+  'meta-llama/llama-4-scout:free',          // Latest Llama 4
   'mistralai/mistral-small-3.1-24b-instruct:free', // Good French
-  'qwen/qwen3-235b-a22b:free',              // Large, good reasoning
+  'deepseek/deepseek-chat-v3-0324:free',    // Good reasoning
 ];
 
 // Fallback chain when a provider fails
@@ -193,7 +194,7 @@ export const IMAGE_PROVIDERS: Record<ImageProvider, ImageProviderConfig> = {
       'stabilityai/stable-diffusion-xl-base-1.0', // SDXL
       'stabilityai/stable-diffusion-3.5-large',   // SD 3.5
     ],
-    baseUrl: 'https://api-inference.huggingface.co/models',
+    baseUrl: 'https://router.huggingface.co/hf-inference/models',
     latency: '~3-15s',
     free: '100% gratuit (rate limits)',
     requiresApiKey: true,

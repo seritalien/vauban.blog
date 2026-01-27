@@ -1,11 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+import { useSession } from 'next-auth/react';
 import { useWallet, NetworkId } from '@/providers/wallet-provider';
 import ThemeToggle from './ThemeToggle';
 import { CommandPalette, useCommandPalette } from '@/components/ui/CommandPalette';
+import { UserMenu, SignInButton } from '@/components/auth';
+import { NotificationBell } from '@/components/notifications';
 import { formatAddress } from '@vauban/web3-utils';
 import { useScrollDirection } from '@/hooks/useScrollDirection';
 
@@ -29,10 +32,15 @@ const NETWORK_STYLES: Record<NetworkId, { bg: string; text: string; label: strin
 };
 
 export default function Header() {
+  const { data: session, status: sessionStatus } = useSession();
   const { address, isConnected, isConnecting, isDevMode, network, walletName, connectWallet, connectDevAccount, disconnectWallet, getAccountUrl } = useWallet();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const commandPalette = useCommandPalette();
   const scrollDirection = useScrollDirection();
+
+  // User is authenticated via OAuth or wallet
+  const isOAuthAuthenticated = sessionStatus === 'authenticated' && session?.user;
+  const isAnyAuthenticated = isConnected || isOAuthAuthenticated;
 
   const networkStyle = NETWORK_STYLES[network];
 
@@ -83,10 +91,16 @@ export default function Header() {
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-6">
             <Link
+              href="/feed"
+              className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+            >
+              Feed
+            </Link>
+            <Link
               href="/"
               className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
             >
-              Articles
+              Blog
             </Link>
             <Link
               href="/authors"
@@ -94,7 +108,13 @@ export default function Header() {
             >
               Authors
             </Link>
-            {isConnected && (
+            <Link
+              href="/leaderboard"
+              className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+            >
+              Leaderboard
+            </Link>
+            {isAnyAuthenticated && (
               <>
                 <Link
                   href="/admin/posts"
@@ -130,12 +150,33 @@ export default function Header() {
             </Link>
           </nav>
 
-          {/* Right side: Theme + Wallet + Mobile menu */}
+          {/* Right side: Notifications + Messages + Theme + Wallet + Mobile menu */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Notification bell + Messages (only when authenticated) */}
+            {isAnyAuthenticated && (
+              <div className="hidden sm:flex items-center gap-1">
+                <NotificationBell />
+                <Link
+                  href="/messages"
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
+                  title="Messages"
+                >
+                  <svg className="w-5 h-5 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                </Link>
+              </div>
+            )}
             <ThemeToggle />
 
-            {/* Desktop wallet buttons */}
+            {/* Desktop auth buttons */}
             <div className="hidden sm:flex items-center gap-2">
+              {/* OAuth User Menu (if signed in via OAuth) */}
+              {isOAuthAuthenticated && !isConnected && (
+                <UserMenu />
+              )}
+
+              {/* Wallet connection (if connected via wallet) */}
               {isConnected ? (
                 <>
                   {/* Network badge */}
@@ -191,8 +232,15 @@ export default function Header() {
                     </svg>
                   </button>
                 </>
-              ) : (
+              ) : !isOAuthAuthenticated && (
                 <>
+                  {/* OAuth Sign In Button */}
+                  <SignInButton size="sm" />
+
+                  {/* Divider */}
+                  <span className="text-gray-300 dark:text-gray-600">|</span>
+
+                  {/* Dev accounts for local development */}
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => connectDevAccount(0)}
@@ -209,12 +257,15 @@ export default function Header() {
                       Dev2
                     </button>
                   </div>
+
+                  {/* Wallet connect */}
                   <button
                     onClick={connectWallet}
                     disabled={isConnecting}
-                    className="px-4 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                    className="px-4 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                    title="Connect Starknet wallet (ArgentX, Braavos)"
                   >
-                    {isConnecting ? '...' : 'Connect'}
+                    {isConnecting ? '...' : 'Wallet'}
                   </button>
                 </>
               )}
@@ -241,11 +292,18 @@ export default function Header() {
           <div className="md:hidden py-4 border-t border-gray-200 dark:border-gray-700">
             <nav className="flex flex-col gap-4">
               <Link
+                href="/feed"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+              >
+                Feed
+              </Link>
+              <Link
                 href="/"
                 onClick={() => setMobileMenuOpen(false)}
                 className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
               >
-                Articles
+                Blog
               </Link>
               <Link
                 href="/authors"
@@ -254,7 +312,14 @@ export default function Header() {
               >
                 Authors
               </Link>
-              {isConnected && (
+              <Link
+                href="/leaderboard"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+              >
+                Leaderboard
+              </Link>
+              {isAnyAuthenticated && (
                 <>
                   <Link
                     href="/admin/posts"

@@ -1,26 +1,30 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import nextDynamic from 'next/dynamic';
 import { usePost } from '@/hooks/use-posts';
 
 // Disable static generation for this page (requires IPFS/Arweave client-side)
 export const dynamic = 'force-dynamic';
 import { format } from 'date-fns';
-import CommentSection from '@/components/comments/CommentSection';
-import LikeButton from '@/components/social/LikeButton';
 import Paywall from '@/components/paywall/Paywall';
 import { ArticleDetailSkeleton } from '@/components/ui/Skeleton';
 import Link from 'next/link';
 import { getProfile, formatAddress, getDisplayName, toAddressString } from '@/lib/profiles';
 import { type AuthorProfile } from '@vauban/shared-types';
 import TableOfContents from '@/components/article/TableOfContents';
-import RelatedArticles from '@/components/article/RelatedArticles';
-import ShareButtons from '@/components/social/ShareButtons';
 import JsonLd from '@/components/seo/JsonLd';
 import { generateArticleJsonLd, generateBreadcrumbJsonLd } from '@/lib/seo';
 import ReadingProgress from '@/components/article/ReadingProgress';
 import ArticleContent from '@/components/article/ArticleContent';
-import ReadAloudButton from '@/components/article/ReadAloudButton';
+import Image from 'next/image';
+
+// Dynamic imports for heavy components (reduces initial bundle by ~200KB)
+const CommentSection = nextDynamic(() => import('@/components/comments/CommentSection'), { ssr: false });
+const LikeButton = nextDynamic(() => import('@/components/social/LikeButton'), { ssr: false });
+const RelatedArticles = nextDynamic(() => import('@/components/article/RelatedArticles'), { ssr: false });
+const ShareButtons = nextDynamic(() => import('@/components/social/ShareButtons'), { ssr: false });
+const ReadAloudButton = nextDynamic(() => import('@/components/article/ReadAloudButton'), { ssr: false });
 
 export default function ArticlePage({ params }: { params: Promise<{ slug: string }> }) {
   // Extract ID from params promise (Next.js 15)
@@ -30,6 +34,12 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
   // Fetch post by numeric ID
   const { post, isLoading, error } = usePost(postId);
   const [authorProfile, setAuthorProfile] = useState<AuthorProfile | null>(null);
+  const [currentSentenceIndex, setCurrentSentenceIndex] = useState(-1);
+
+  // Handle sentence change from TTS
+  const handleSentenceChange = useCallback((index: number, _total: number) => {
+    setCurrentSentenceIndex(index);
+  }, []);
 
   // Load author profile
   useEffect(() => {
@@ -60,9 +70,12 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
   const articleUrl = `${siteUrl}/articles/${postId}`;
   const authorName = getDisplayName(post.author, authorProfile);
 
+  const articleTitle = post.title || 'Untitled';
+  const articleExcerpt = post.excerpt || '';
+
   const articleJsonLd = generateArticleJsonLd({
-    title: post.title,
-    description: post.excerpt,
+    title: articleTitle,
+    description: articleExcerpt,
     content: post.content,
     url: articleUrl,
     image: post.coverImage,
@@ -77,7 +90,7 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
   const breadcrumbJsonLd = generateBreadcrumbJsonLd([
     { name: 'Home', url: siteUrl },
     { name: 'Articles', url: `${siteUrl}/articles` },
-    { name: post.title, url: articleUrl },
+    { name: articleTitle, url: articleUrl },
   ]);
 
   return (
@@ -91,16 +104,21 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
 
       <article className="container mx-auto px-4 py-12 max-w-4xl">
         {post.coverImage && (
-        <img
-          src={post.coverImage}
-          alt={post.title}
-          className="w-full h-96 object-cover rounded-lg mb-8"
-        />
+        <div className="relative w-full h-96 rounded-lg overflow-hidden mb-8">
+          <Image
+            src={post.coverImage}
+            alt={post.title}
+            fill
+            sizes="(max-width: 768px) 100vw, 896px"
+            className="object-cover"
+            priority
+          />
+        </div>
       )}
 
       <header className="mb-6 sm:mb-8">
         <div className="flex flex-wrap gap-2 mb-3 sm:mb-4">
-          {post.tags.map((tag) => (
+          {(post.tags ?? []).map((tag) => (
             <span
               key={tag}
               className="px-2 sm:px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs sm:text-sm rounded"
@@ -115,10 +133,12 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
         {/* Author info */}
         <Link href={`/authors/${toAddressString(post.author)}`} className="flex items-center gap-3 mb-4 group">
           {authorProfile?.avatar ? (
-            <img
+            <Image
               src={authorProfile.avatar}
               alt={getDisplayName(post.author, authorProfile)}
-              className="w-10 h-10 rounded-full object-cover"
+              width={40}
+              height={40}
+              className="rounded-full object-cover"
             />
           ) : (
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">
@@ -157,10 +177,10 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
         <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex flex-wrap items-center justify-between gap-4">
           <ShareButtons
             url={typeof window !== 'undefined' ? window.location.href : `https://vauban.blog/articles/${post.id}`}
-            title={post.title}
-            excerpt={post.excerpt}
+            title={articleTitle}
+            excerpt={articleExcerpt}
           />
-          <ReadAloudButton content={post.content} />
+          <ReadAloudButton content={post.content} onSentenceChange={handleSentenceChange} />
         </div>
       </header>
 
@@ -170,10 +190,10 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
       {/* Article Content - wrapped in Paywall if paid */}
       {post.isPaid ? (
         <Paywall postId={post.id} price={post.price.toString()}>
-          <ArticleContent content={post.content} className="mb-12" />
+          <ArticleContent content={post.content} className="mb-12" currentSentenceIndex={currentSentenceIndex} />
         </Paywall>
       ) : (
-        <ArticleContent content={post.content} className="mb-12" />
+        <ArticleContent content={post.content} className="mb-12" currentSentenceIndex={currentSentenceIndex} />
       )}
 
       {/* Content Verification + Storage Info */}

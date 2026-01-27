@@ -57,6 +57,7 @@ export function getDefaultConfig(): AIConfig {
 /**
  * Get the current AI configuration from localStorage
  * Falls back to defaults if not set or invalid
+ * Auto-resets if stored model no longer exists
  */
 export function getAIConfig(): AIConfig {
   // Server-side or no localStorage available
@@ -74,7 +75,20 @@ export function getAIConfig(): AIConfig {
     const validated = AIConfigSchema.safeParse(parsed);
 
     if (validated.success) {
-      return validated.data;
+      const config = validated.data;
+
+      // Validate that the stored model still exists
+      const providerModels = TEXT_PROVIDERS[config.textProvider]?.models ?? [];
+      const modelExists = providerModels.includes(config.textModel);
+
+      if (!modelExists) {
+        console.warn(`[AI Config] Stored model "${config.textModel}" no longer exists, resetting to defaults`);
+        const defaults = getDefaultConfig();
+        localStorage.setItem(CONFIG_KEY, JSON.stringify(defaults));
+        return defaults;
+      }
+
+      return config;
     }
 
     // Invalid stored config, return defaults

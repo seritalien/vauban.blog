@@ -1,15 +1,26 @@
 // Post schemas and types
 export {
+  // Content type constants and utilities
+  POST_TYPE_TWEET,
+  POST_TYPE_THREAD,
+  POST_TYPE_ARTICLE,
+  ContentTypeSchema,
+  contentTypeToNumber,
+  numberToContentType,
+  type ContentType,
+  // Post schemas
   PostInputSchema,
   PostMetadataSchema,
   PostOutputSchema,
   PostListItemSchema,
   PostQuerySchema,
+  TimelineFeedItemSchema,
   type PostInput,
   type PostMetadata,
   type PostOutput,
   type PostListItem,
   type PostQuery,
+  type TimelineFeedItem,
 } from './post';
 
 // Comment schemas and types

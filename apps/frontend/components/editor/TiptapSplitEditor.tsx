@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { useState, useCallback, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { useTiptapEditor } from './tiptap/useTiptapEditor';
 import { TiptapEditorCore } from './tiptap/TiptapEditorCore';
 import { TiptapToolbar } from './tiptap/TiptapToolbar';
@@ -91,6 +91,7 @@ export const TiptapSplitEditor = forwardRef<TiptapSplitEditorHandle, TiptapSplit
         showToast(`AI is ${action.replace('_', ' ')}...`, 'info');
 
         // Perform AI action
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const result = await performAIAction(action as any, contextText);
 
         // Check if AI action was successful
@@ -122,21 +123,29 @@ export const TiptapSplitEditor = forwardRef<TiptapSplitEditorHandle, TiptapSplit
   useEffect(() => {
     if (editor && handleAIAction) {
       // Store the AI handler in editor storage for slash commands
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (editor as any).storage.aiHandler = handleAIAction;
     }
   }, [editor, handleAIAction]);
 
+  // Store onSelectionChange in a ref to avoid re-registering editor listeners
+  // when the callback identity changes (which would cause infinite update loops)
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  useEffect(() => {
+    onSelectionChangeRef.current = onSelectionChange;
+  }, [onSelectionChange]);
+
   // Track selection changes and notify parent
   useEffect(() => {
-    if (!editor || !onSelectionChange) return;
+    if (!editor || !onSelectionChangeRef.current) return;
 
     const handleSelectionUpdate = () => {
       const { from, to } = editor.state.selection;
       if (from !== to) {
         const text = editor.state.doc.textBetween(from, to, ' ');
-        onSelectionChange(text);
+        onSelectionChangeRef.current?.(text);
       } else {
-        onSelectionChange('');
+        onSelectionChangeRef.current?.('');
       }
     };
 
@@ -147,7 +156,7 @@ export const TiptapSplitEditor = forwardRef<TiptapSplitEditorHandle, TiptapSplit
       editor.off('selectionUpdate', handleSelectionUpdate);
       editor.off('focus', handleSelectionUpdate);
     };
-  }, [editor, onSelectionChange]);
+  }, [editor]);
 
   // Expose imperative methods to parent via ref
   useImperativeHandle(ref, () => ({

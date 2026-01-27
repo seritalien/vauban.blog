@@ -13,6 +13,7 @@ import {
   type TextProvider,
   type AITaskType,
   TEXT_PROVIDERS,
+  OPENROUTER_FREE_FALLBACKS,
   getTextProviderApiKey,
   getBestModelForTask,
   getTaskTypeForAction,
@@ -553,6 +554,66 @@ async function chatCompletionOpenAI(
 }
 
 /**
+ * OpenRouter-specific function with automatic model fallback
+ * Tries alternative free models on rate limit (429) or model not found (404)
+ */
+async function chatCompletionOpenRouterWithFallback(
+  messages: ChatMessage[],
+  options: AIRequestOptions & { apiKey: string; baseUrl: string; model: string }
+): Promise<AIResponse<string>> {
+  // Models to try in order (primary model first, then fallbacks)
+  const modelsToTry = [
+    options.model,
+    ...OPENROUTER_FREE_FALLBACKS.filter(m => m !== options.model),
+  ].filter(Boolean) as string[];
+
+  let lastError: AIResponse<string> | null = null;
+
+  for (const model of modelsToTry) {
+    console.log(`[AI] Trying OpenRouter model: ${model}`);
+
+    const result = await chatCompletionOpenAI(messages, {
+      ...options,
+      provider: 'openrouter',
+      model,
+    });
+
+    if (result.success) {
+      if (model !== options.model) {
+        console.log(`[AI] Success with fallback model: ${model}`);
+      }
+      return result;
+    }
+
+    lastError = result;
+
+    // Check if we should try next model
+    const shouldRetry =
+      result.error?.includes('429') ||
+      result.error?.includes('rate limit') ||
+      result.error?.includes('Limite de requêtes') ||
+      result.error?.includes('No endpoints found') ||
+      result.error?.includes('404') ||
+      result.code === 'API_ERROR';
+
+    if (!shouldRetry) {
+      // Non-retriable error (auth, etc.), stop immediately
+      console.log(`[AI] Non-retriable error, stopping: ${result.error}`);
+      return result;
+    }
+
+    console.log(`[AI] Model ${model} failed, trying next...`);
+  }
+
+  // All models failed
+  return lastError ?? {
+    success: false,
+    error: 'Tous les modèles OpenRouter ont échoué. Réessayez plus tard.',
+    code: 'API_ERROR',
+  };
+}
+
+/**
  * Send a chat completion request to the configured AI provider
  * Supports automatic fallback to other providers on failure (429, network errors)
  */
@@ -659,9 +720,9 @@ async function chatCompletionWithProvider(
           code: 'NO_PROVIDER',
         };
       }
-      return chatCompletionOpenAI(messages, {
+      // Try with fallback models on rate limit or model not found
+      return chatCompletionOpenRouterWithFallback(messages, {
         ...options,
-        provider: config.provider,
         apiKey: config.apiKey,
         baseUrl: config.baseUrl,
         model: config.model,

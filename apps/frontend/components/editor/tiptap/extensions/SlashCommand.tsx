@@ -1,9 +1,10 @@
 'use client';
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// Tiptap extension types require complex generics that are not worth typing explicitly
 import { Extension } from '@tiptap/core';
 import { ReactRenderer } from '@tiptap/react';
 import Suggestion, { SuggestionOptions } from '@tiptap/suggestion';
-import { PluginKey } from '@tiptap/pm/state';
 import tippy, { Instance as TippyInstance } from 'tippy.js';
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 
@@ -293,7 +294,7 @@ export const getSuggestionConfig = () => ({
           return true;
         }
 
-        return component.ref?.onKeyDown(props);
+        return (component.ref as { onKeyDown?: (props: any) => boolean } | null)?.onKeyDown?.(props);
       },
 
       onExit() {

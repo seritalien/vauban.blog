@@ -12,6 +12,7 @@ function AdminPageInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const draftId = searchParams.get('draft');
+  const fromPage = searchParams.get('from');
 
   return (
     <div className="min-h-screen">
@@ -35,7 +36,7 @@ function AdminPageInner() {
           window.history.replaceState(null, '', `/admin?draft=${id}`);
         }}
         onSuccess={() => {
-          router.push('/');
+          router.push(fromPage === 'feed' ? '/feed' : '/');
         }}
       />
     </div>
