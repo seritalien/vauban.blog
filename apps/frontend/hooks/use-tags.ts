@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { usePosts } from './use-posts';
 
 /**
@@ -25,14 +25,10 @@ interface UseAvailableTagsResult {
   getSuggestions: (query: string) => TagWithCount[];
 }
 
-// Simple in-memory cache for tags
-let cachedTags: TagWithCount[] | null = null;
-let cacheTimestamp: number = 0;
-const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
-
 /**
  * Hook to fetch all unique tags from existing posts with their usage counts.
- * Results are cached for 5 minutes to avoid redundant API calls.
+ * Derives tags purely from the posts data cached by React Query (5min staleTime),
+ * so no manual cache is needed.
  *
  * @returns Object containing tags with counts, loading state, error state, and suggestion helper
  *
@@ -45,32 +41,10 @@ const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
  * ```
  */
 export function useAvailableTags(): UseAvailableTagsResult {
-  const [tags, setTags] = useState<TagWithCount[]>(cachedTags ?? []);
-  const [isLoading, setIsLoading] = useState(!cachedTags);
-  const [error, setError] = useState<string | null>(null);
+  const { posts, isLoading, error } = usePosts(100, 0);
 
-  // Fetch a larger number of posts to get comprehensive tag data
-  const { posts, isLoading: postsLoading, error: postsError } = usePosts(100, 0);
-
-  useEffect(() => {
-    // Check if cache is still valid
-    const now = Date.now();
-    if (cachedTags !== null && now - cacheTimestamp < CACHE_DURATION_MS) {
-      setTags(cachedTags);
-      setIsLoading(false);
-      return;
-    }
-
-    if (postsLoading) {
-      setIsLoading(true);
-      return;
-    }
-
-    if (postsError) {
-      setError(postsError);
-      setIsLoading(false);
-      return;
-    }
+  const tags = useMemo(() => {
+    if (!posts || posts.length === 0) return [];
 
     // Extract and count tags from all posts
     const tagCounts = new Map<string, number>();
@@ -87,7 +61,7 @@ export function useAvailableTags(): UseAvailableTagsResult {
     }
 
     // Convert to array and sort by count (descending), then alphabetically for ties
-    const sortedTags: TagWithCount[] = Array.from(tagCounts.entries())
+    return Array.from(tagCounts.entries())
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => {
         if (b.count !== a.count) {
@@ -95,15 +69,7 @@ export function useAvailableTags(): UseAvailableTagsResult {
         }
         return a.name.localeCompare(b.name);
       });
-
-    // Update cache
-    cachedTags = sortedTags;
-    cacheTimestamp = now;
-
-    setTags(sortedTags);
-    setIsLoading(false);
-    setError(null);
-  }, [posts, postsLoading, postsError]);
+  }, [posts]);
 
   /**
    * Get tag suggestions based on a query string.
@@ -146,12 +112,4 @@ export function useAvailableTags(): UseAvailableTagsResult {
     error,
     getSuggestions,
   };
-}
-
-/**
- * Clear the tags cache, forcing a refresh on next hook usage
- */
-export function clearTagsCache(): void {
-  cachedTags = null;
-  cacheTimestamp = 0;
 }

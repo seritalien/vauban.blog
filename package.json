@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "turbo run dev",
     "dev:all": "bash scripts/dev.sh",
-    "dev:services": "cd docker && docker-compose up -d && bash ../scripts/check-services.sh",
+    "dev:services": "cd docker && docker compose up -d && bash ../scripts/check-services.sh",
     "dev:frontend": "turbo run dev --filter=frontend",
     "build": "turbo run build",
     "test": "turbo run test",
@@ -21,9 +21,9 @@
     "contracts:build": "cd contracts && scarb build",
     "contracts:test": "cd contracts && snforge test",
     "contracts:deploy": "bash contracts/scripts/deploy.sh",
-    "docker:up": "cd docker && docker-compose up -d",
-    "docker:down": "cd docker && docker-compose down",
-    "docker:logs": "cd docker && docker-compose logs -f",
+    "docker:up": "cd docker && docker compose up -d",
+    "docker:down": "cd docker && docker compose down",
+    "docker:logs": "cd docker && docker compose logs -f",
     "publish:article": "tsx scripts/publish-content.ts",
     "publish:batch": "tsx scripts/publish-content.ts --batch",
     "publish:blog": "tsx scripts/publish-content.ts content/blog/"

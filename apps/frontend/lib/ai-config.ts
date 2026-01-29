@@ -35,9 +35,9 @@ export function getDefaultConfig(): AIConfig {
   const textProvider = getBestAvailableTextProvider();
   const imageProvider = getBestAvailableImageProvider();
 
-  // Use the first free model for OpenRouter
+  // Use the best free model for OpenRouter
   const textModel = textProvider === 'openrouter'
-    ? 'google/gemini-2.0-flash-exp:free'
+    ? 'google/gemini-2.5-flash:free'
     : TEXT_PROVIDERS[textProvider].models[0] ?? 'mistral';
 
   // Use FLUX for Hugging Face (best free image model)

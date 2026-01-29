@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useWallet } from '@/providers/wallet-provider';
 import { useToast } from '@/components/ui/Toast';
@@ -23,6 +23,7 @@ interface InlineCommentsProps {
   postId: string;
   isExpanded: boolean;
   onClose: () => void;
+  /** @deprecated Not used internally, kept for backwards compatibility */
   initialCount?: number;
 }
 
@@ -30,7 +31,6 @@ export default function InlineComments({
   postId,
   isExpanded,
   onClose,
-  initialCount: _initialCount = 0,
 }: InlineCommentsProps) {
   const { account, address, isConnected } = useWallet();
   const { showToast } = useToast();
@@ -43,15 +43,6 @@ export default function InlineComments({
   const profile = address ? getProfile(address) : null;
   const displayName = address ? getDisplayName(address, profile) : '';
 
-  // Load comments when expanded
-  useEffect(() => {
-    if (isExpanded) {
-      loadComments();
-      // Focus input after animation
-      setTimeout(() => inputRef.current?.focus(), 300);
-    }
-  }, [isExpanded, postId]);
-
   const toHexHash = (hash: string): string => {
     if (hash.startsWith('0x')) return hash.toLowerCase();
     try {
@@ -61,7 +52,7 @@ export default function InlineComments({
     }
   };
 
-  const loadComments = async () => {
+  const loadComments = useCallback(async () => {
     setIsLoading(true);
     try {
       const rawComments = await getCommentsForPost(postId, 10, 0);
@@ -121,7 +112,16 @@ export default function InlineComments({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [postId]);
+
+  // Load comments when expanded
+  useEffect(() => {
+    if (isExpanded) {
+      void loadComments();
+      // Focus input after animation
+      setTimeout(() => inputRef.current?.focus(), 300);
+    }
+  }, [isExpanded, loadComments]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

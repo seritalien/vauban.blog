@@ -29,7 +29,7 @@ export default function ConversationList({
             Pas de conversations
           </h3>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Commencez une conversation depuis le profil d'un utilisateur
+            Commencez une conversation depuis le profil d&apos;un utilisateur
           </p>
         </div>
       </div>

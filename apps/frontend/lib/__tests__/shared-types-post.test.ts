@@ -1,4 +1,4 @@
-import { vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 // =============================================================================
 // Post Zod Schema Tests (from @vauban/shared-types)

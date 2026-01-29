@@ -105,28 +105,28 @@ export default function CommentSection({ postId }: CommentSectionProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeReplyTo, setActiveReplyTo] = useState<string | null>(null);
 
-  // Convert BigInt/number to hex string for hash lookup
-  function toHexHash(value: unknown): string {
-    const str = String(value);
-    // If already hex, return as-is
-    if (str.startsWith('0x')) return str;
-    // Convert decimal BigInt to hex
-    try {
-      return '0x' + BigInt(str).toString(16);
-    } catch {
-      return str;
-    }
-  }
-
-  // Resolve comment content from local storage
-  function resolveCommentContent(metadata: CommentMetadata[]): CommentWithContent[] {
-    return metadata.map((comment) => ({
-      ...comment,
-      content: getCommentContent(toHexHash(comment.contentHash)),
-    }));
-  }
-
   const loadComments = useCallback(async () => {
+    // Convert BigInt/number to hex string for hash lookup
+    function toHexHash(value: unknown): string {
+      const str = String(value);
+      // If already hex, return as-is
+      if (str.startsWith('0x')) return str;
+      // Convert decimal BigInt to hex
+      try {
+        return '0x' + BigInt(str).toString(16);
+      } catch {
+        return str;
+      }
+    }
+
+    // Resolve comment content from local storage
+    function resolveCommentContent(metadata: CommentMetadata[]): CommentWithContent[] {
+      return metadata.map((comment) => ({
+        ...comment,
+        content: getCommentContent(toHexHash(comment.contentHash)),
+      }));
+    }
+
     try {
       setIsLoading(true);
       const fetchedComments = await getCommentsForPost(postId, 100, 0);

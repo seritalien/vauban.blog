@@ -12,6 +12,7 @@
 
 import { type ExportedPublicKey } from '@/lib/crypto';
 import { uploadJSONToIPFSViaAPI, fetchJSONFromIPFSViaAPI } from '@/lib/ipfs-client';
+import { getProfile } from '@/lib/profiles';
 
 // =============================================================================
 // TYPES
@@ -191,6 +192,33 @@ export function hasCachedPublicKey(address: string): boolean {
 export function getCachedKeyCid(address: string): string | null {
   const cached = getCachedKey(address);
   return cached?.cid || null;
+}
+
+/**
+ * Look up a user's public key by their address.
+ *
+ * Resolution order:
+ * 1. Local cache (instant)
+ * 2. Profile's publicKeyCid → IPFS fetch
+ * 3. null (key not discoverable)
+ */
+export async function lookupPublicKeyByAddress(
+  address: string,
+): Promise<ExportedPublicKey | null> {
+  // 1. Check cache
+  const cached = getCachedKey(address);
+  if (cached) {
+    return cached.publicKey;
+  }
+
+  // 2. Look up the user's profile for a publicKeyCid
+  const profile = getProfile(address);
+  if (profile?.publicKeyCid) {
+    return fetchPublicKey(address, profile.publicKeyCid);
+  }
+
+  // 3. Not discoverable
+  return null;
 }
 
 /**

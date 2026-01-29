@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useWallet } from '@/providers/wallet-provider';
@@ -16,12 +16,23 @@ import type { ExportedPublicKey } from '@/lib/crypto';
 export const dynamic = 'force-dynamic';
 
 export default function MessagesPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="w-16 h-16 rounded-full border-4 border-blue-500 border-t-transparent animate-spin" />
+      </div>
+    }>
+      <MessagesContent />
+    </Suspense>
+  );
+}
+
+function MessagesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { address, isConnected } = useWallet();
   const {
     keyPair,
-    publicKey,
     fingerprint,
     isInitializing,
     initializeKeys,
@@ -69,15 +80,11 @@ export default function MessagesPage() {
 
   // Handle recipient selection from modal
   const handleSelectRecipient = async (recipientAddress: string, recipientPublicKey?: ExportedPublicKey) => {
-    // If we have the recipient's public key, start the conversation
     if (recipientPublicKey) {
       await startConversation(recipientAddress, recipientPublicKey);
-    } else if (publicKey) {
-      // For now, use our own public key as a placeholder
-      // In production, we'd fetch the recipient's public key from their profile
-      // TODO: Implement public key registry/exchange
-      await startConversation(recipientAddress, publicKey);
     }
+    // If no public key was resolved, the conversation is created without E2E.
+    // The NewConversationModal already attempted key discovery + fallback.
 
     // Clear the query param
     router.replace('/messages');

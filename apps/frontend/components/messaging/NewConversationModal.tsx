@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useWallet } from '@/providers/wallet-provider';
 import { useFollowStats } from '@/hooks/use-follow';
 import { getProfile, getDisplayName, formatAddress } from '@/lib/profiles';
+import { lookupPublicKeyByAddress, fetchPublicKey } from '@/lib/public-key-registry';
 import type { ExportedPublicKey } from '@/lib/crypto';
 
 // =============================================================================
@@ -69,12 +70,55 @@ export default function NewConversationModal({
     return /^0x[a-fA-F0-9]+$/.test(searchQuery) && searchQuery.length >= 10;
   }, [searchQuery]);
 
-  const handleSelect = (recipientAddress: string) => {
-    // TODO: In the future, fetch the recipient's public key from their profile/IPFS
-    // For now, we pass undefined and handle key exchange when sending
-    onSelectRecipient(recipientAddress);
-    onClose();
-  };
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [fallbackAddress, setFallbackAddress] = useState<string | null>(null);
+  const [manualCid, setManualCid] = useState('');
+
+  const handleSelect = useCallback(async (recipientAddress: string) => {
+    setIsLookingUp(true);
+    try {
+      const pubKey = await lookupPublicKeyByAddress(recipientAddress);
+      if (pubKey) {
+        onSelectRecipient(recipientAddress, pubKey);
+        onClose();
+      } else {
+        // No key discoverable — show manual CID input fallback
+        setFallbackAddress(recipientAddress);
+      }
+    } catch (err) {
+      console.error('Key lookup failed:', err);
+      setFallbackAddress(recipientAddress);
+    } finally {
+      setIsLookingUp(false);
+    }
+  }, [onSelectRecipient, onClose]);
+
+  const handleManualCidSubmit = useCallback(async () => {
+    if (!fallbackAddress || !manualCid.trim()) return;
+    setIsLookingUp(true);
+    try {
+      const pubKey = await fetchPublicKey(fallbackAddress, manualCid.trim());
+      onSelectRecipient(fallbackAddress, pubKey ?? undefined);
+      onClose();
+    } catch (err) {
+      console.error('Manual CID fetch failed:', err);
+      onSelectRecipient(fallbackAddress);
+      onClose();
+    } finally {
+      setIsLookingUp(false);
+      setFallbackAddress(null);
+      setManualCid('');
+    }
+  }, [fallbackAddress, manualCid, onSelectRecipient, onClose]);
+
+  const handleSkipKeyExchange = useCallback(() => {
+    if (fallbackAddress) {
+      onSelectRecipient(fallbackAddress);
+      onClose();
+      setFallbackAddress(null);
+      setManualCid('');
+    }
+  }, [fallbackAddress, onSelectRecipient, onClose]);
 
   if (!isOpen) return null;
 
@@ -218,6 +262,47 @@ export default function NewConversationModal({
               </>
             )}
           </div>
+
+          {/* Loading overlay */}
+          {isLookingUp && (
+            <div className="flex justify-center py-4 border-t border-gray-200 dark:border-gray-700">
+              <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+
+          {/* Fallback: manual CID input when key not discoverable */}
+          {fallbackAddress && !isLookingUp && (
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20">
+              <p className="text-sm text-yellow-800 dark:text-yellow-300 mb-2">
+                Cle publique introuvable pour {formatAddress(fallbackAddress)}.
+              </p>
+              <p className="text-xs text-yellow-700 dark:text-yellow-400 mb-3">
+                Collez le CID IPFS de la cle publique du destinataire, ou continuez sans chiffrement.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={manualCid}
+                  onChange={(e) => setManualCid(e.target.value)}
+                  placeholder="QmXxx... ou bafyxxx..."
+                  className="flex-1 px-3 py-2 text-sm bg-white dark:bg-gray-800 rounded-lg border border-yellow-300 dark:border-yellow-600 focus:ring-2 focus:ring-yellow-500"
+                />
+                <button
+                  onClick={handleManualCidSubmit}
+                  disabled={!manualCid.trim()}
+                  className="px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  OK
+                </button>
+              </div>
+              <button
+                onClick={handleSkipKeyExchange}
+                className="mt-2 w-full text-xs text-yellow-700 dark:text-yellow-400 hover:underline"
+              >
+                Continuer sans cle (pas de chiffrement E2E)
+              </button>
+            </div>
+          )}
 
           {/* Footer */}
           <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">

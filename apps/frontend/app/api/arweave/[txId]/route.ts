@@ -45,14 +45,18 @@ export async function GET(
       if (response.ok) {
         const contentType = response.headers.get('content-type') || 'application/octet-stream';
 
+        // Arweave content is immutable — cache forever
+        const immutableCacheHeaders = {
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          'X-Arweave-Gateway': gateway,
+          'X-Arweave-TxId': txId,
+        };
+
         // For JSON responses
         if (contentType.includes('application/json')) {
           const data = await response.json();
           return NextResponse.json(data, {
-            headers: {
-              'X-Arweave-Gateway': gateway,
-              'X-Arweave-TxId': txId,
-            },
+            headers: immutableCacheHeaders,
           });
         }
 
@@ -62,8 +66,7 @@ export async function GET(
           return new NextResponse(text, {
             headers: {
               'Content-Type': contentType,
-              'X-Arweave-Gateway': gateway,
-              'X-Arweave-TxId': txId,
+              ...immutableCacheHeaders,
             },
           });
         }
@@ -73,8 +76,7 @@ export async function GET(
         return new NextResponse(blob, {
           headers: {
             'Content-Type': contentType,
-            'X-Arweave-Gateway': gateway,
-            'X-Arweave-TxId': txId,
+            ...immutableCacheHeaders,
           },
         });
       }

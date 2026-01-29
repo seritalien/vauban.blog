@@ -3,10 +3,16 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { useSession } from 'next-auth/react';
 import { useWallet, NetworkId } from '@/providers/wallet-provider';
+import { useIdentity } from '@/hooks/use-identity';
 import ThemeToggle from './ThemeToggle';
-import { CommandPalette, useCommandPalette } from '@/components/ui/CommandPalette';
+import dynamic from 'next/dynamic';
+import { useCommandPalette } from '@/hooks/use-command-palette';
+
+const CommandPalette = dynamic(
+  () => import('@/components/ui/CommandPalette').then(m => m.CommandPalette),
+  { ssr: false }
+);
 import { UserMenu, SignInButton } from '@/components/auth';
 import { NotificationBell } from '@/components/notifications';
 import { formatAddress } from '@vauban/web3-utils';
@@ -32,15 +38,14 @@ const NETWORK_STYLES: Record<NetworkId, { bg: string; text: string; label: strin
 };
 
 export default function Header() {
-  const { data: session, status: sessionStatus } = useSession();
   const { address, isConnected, isConnecting, isDevMode, network, walletName, connectWallet, connectDevAccount, disconnectWallet, getAccountUrl } = useWallet();
+  const identity = useIdentity();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const commandPalette = useCommandPalette();
   const scrollDirection = useScrollDirection();
 
-  // User is authenticated via OAuth or wallet
-  const isOAuthAuthenticated = sessionStatus === 'authenticated' && session?.user;
-  const isAnyAuthenticated = isConnected || isOAuthAuthenticated;
+  // Unified auth check — covers both wallet and OAuth
+  const isAnyAuthenticated = identity.isAuthenticated;
 
   const networkStyle = NETWORK_STYLES[network];
 
@@ -171,8 +176,8 @@ export default function Header() {
 
             {/* Desktop auth buttons */}
             <div className="hidden sm:flex items-center gap-2">
-              {/* OAuth User Menu (if signed in via OAuth) */}
-              {isOAuthAuthenticated && !isConnected && (
+              {/* OAuth User Menu (if signed in via OAuth custodial) */}
+              {identity.isCustodial && !isConnected && (
                 <UserMenu />
               )}
 
@@ -232,7 +237,7 @@ export default function Header() {
                     </svg>
                   </button>
                 </>
-              ) : !isOAuthAuthenticated && (
+              ) : !identity.isCustodial && (
                 <>
                   {/* OAuth Sign In Button */}
                   <SignInButton size="sm" />

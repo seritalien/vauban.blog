@@ -2,7 +2,7 @@
 
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { PostOutput } from '@vauban/shared-types';
-import { getPosts, getPost, initStarknetProvider, setContractAddresses, calculateContentHash } from '@vauban/web3-utils';
+import { getPosts, getPost, getPostCount, initStarknetProvider, setContractAddresses, calculateContentHash } from '@vauban/web3-utils';
 import { queryKeys } from '@/lib/query-keys';
 
 // Extended post type with verification status
@@ -91,37 +91,50 @@ if (typeof window !== 'undefined') {
   });
 }
 
+// Check if CID is from E2E tests (fake CID pattern)
+function isTestCid(cid: string): boolean {
+  return cid.startsWith('QmTest') || cid.startsWith('QmTweet');
+}
+
 export async function fetchPostContent(meta: { id: string; author: string | number; ipfsCid: string; arweaveTxId: string; contentHash: string; createdAt: number; updatedAt: number; postType?: number; parentId?: string; threadRootId?: string; isPinned?: boolean }): Promise<VerifiedPost> {
   let content: unknown;
   let isVerified = false;
   let verificationError: string | undefined;
 
-  // Try IPFS first (with dedup cache), then Arweave as fallback, then placeholder for test data
-  try {
-    const { data } = await fetchFromIPFSProxyCached(meta.ipfsCid);
+  // Short-circuit for test posts - don't hit network for fake CIDs
+  if (isTestCid(meta.ipfsCid)) {
+    const { data } = generatePlaceholderContent(meta.id);
     content = data;
-
-    // Verify content hash
-    isVerified = await verifyContentHash(data, meta.contentHash);
-    if (!isVerified) {
-      verificationError = 'Content hash mismatch';
-    }
-  } catch (ipfsErr) {
-    console.warn(`IPFS failed for post ${meta.id}, trying Arweave...`);
+    isVerified = false;
+    verificationError = 'Test post - content not stored';
+  } else {
+    // Try IPFS first (with dedup cache), then Arweave as fallback, then placeholder for test data
     try {
-      const { data } = await fetchFromArweave(meta.arweaveTxId);
+      const { data } = await fetchFromIPFSProxyCached(meta.ipfsCid);
       content = data;
+
+      // Verify content hash
       isVerified = await verifyContentHash(data, meta.contentHash);
       if (!isVerified) {
         verificationError = 'Content hash mismatch';
       }
-    } catch (arweaveErr) {
-      // Use placeholder content for test posts
-      console.warn(`Using placeholder for test post ${meta.id}`);
-      const { data } = generatePlaceholderContent(meta.id);
-      content = data;
-      isVerified = false;
-      verificationError = 'Test post - content not stored';
+    } catch (ipfsErr) {
+      console.warn(`IPFS failed for post ${meta.id}, trying Arweave...`);
+      try {
+        const { data } = await fetchFromArweave(meta.arweaveTxId);
+        content = data;
+        isVerified = await verifyContentHash(data, meta.contentHash);
+        if (!isVerified) {
+          verificationError = 'Content hash mismatch';
+        }
+      } catch {
+        // Use placeholder content for posts with missing storage
+        console.warn(`Using placeholder for post ${meta.id}`);
+        const { data } = generatePlaceholderContent(meta.id);
+        content = data;
+        isVerified = false;
+        verificationError = 'Content not found in storage';
+      }
     }
   }
 
@@ -145,10 +158,25 @@ export async function fetchPostContent(meta: { id: string; author: string | numb
 
 /**
  * Fetch a page of posts with their content resolved.
- * Exported for prefetch use by other components.
+ *
+ * The contract returns posts in ascending order (oldest first with offset 0).
+ * To display newest-first, we compute the offset from the end:
+ *   offset = totalCount - page * limit
+ * and reverse the result so each page is newest→oldest.
  */
-async function fetchPostsPage(limit: number, offset: number): Promise<VerifiedPost[]> {
-  const postMetadata = await getPosts(limit, offset);
+async function fetchPostsPageReversed(limit: number, reverseOffset: number): Promise<{ posts: VerifiedPost[]; totalCount: number }> {
+  const totalCount = await getPostCount();
+
+  // reverseOffset = how many posts we've already loaded from the end
+  // Compute the contract offset (from the start)
+  const contractOffset = Math.max(0, totalCount - reverseOffset - limit);
+  const actualLimit = Math.min(limit, totalCount - reverseOffset);
+
+  if (actualLimit <= 0) {
+    return { posts: [], totalCount };
+  }
+
+  const postMetadata = await getPosts(actualLimit, contractOffset);
 
   const postsWithContent = await Promise.all(
     postMetadata
@@ -156,7 +184,11 @@ async function fetchPostsPage(limit: number, offset: number): Promise<VerifiedPo
       .map(fetchPostContent)
   );
 
-  return postsWithContent.filter(Boolean) as VerifiedPost[];
+  // Reverse so newest is first within this page
+  const filtered = postsWithContent.filter(Boolean) as VerifiedPost[];
+  filtered.reverse();
+
+  return { posts: filtered, totalCount };
 }
 
 export function usePosts(limit: number = 10, _offset: number = 0) {
@@ -171,21 +203,22 @@ export function usePosts(limit: number = 10, _offset: number = 0) {
   } = useInfiniteQuery({
     queryKey: queryKeys.posts.infinite(limit),
     queryFn: async ({ pageParam = 0 }) => {
-      const posts = await fetchPostsPage(limit, pageParam);
+      // pageParam = number of posts already loaded from the end
+      const { posts, totalCount } = await fetchPostsPageReversed(limit, pageParam);
+      const nextReverseOffset = pageParam + limit;
       return {
         posts,
-        nextOffset: pageParam + limit,
-        // If we got fewer posts than requested, there are no more
-        hasMore: posts.length >= limit,
+        nextReverseOffset,
+        hasMore: nextReverseOffset < totalCount,
       };
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage) =>
-      lastPage.hasMore ? lastPage.nextOffset : undefined,
-    staleTime: 5 * 60 * 1000,
+      lastPage.hasMore ? lastPage.nextReverseOffset : undefined,
+    staleTime: 30 * 60 * 1000,
   });
 
-  // Flatten pages into a single deduped array
+  // Flatten pages into a single deduped array (already newest-first)
   const posts: VerifiedPost[] = [];
   const seenIds = new Set<string>();
   if (data) {
@@ -227,7 +260,7 @@ export function usePost(postId: string) {
       return fetchPostContent(meta);
     },
     enabled: !!postId,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 60 * 1000,
   });
 
   const error = queryError instanceof Error ? queryError.message : queryError ? String(queryError) : null;

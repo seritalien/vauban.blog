@@ -1,9 +1,11 @@
 // Vauban Blog Service Worker
-// Version: 1.0.0
+// Version: 1.1.0
 
 const CACHE_NAME = 'vauban-v1';
 const STATIC_CACHE = 'vauban-static-v1';
 const DYNAMIC_CACHE = 'vauban-dynamic-v1';
+const IPFS_CACHE = 'vauban-ipfs-v1';
+const IPFS_CACHE_MAX_ENTRIES = 200;
 
 // Static assets to cache on install
 const STATIC_ASSETS = [
@@ -25,26 +27,51 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Activate event - clean up old caches
+// Activate event - clean up old caches + trim IPFS cache
 self.addEventListener('activate', (event) => {
   console.log('[SW] Activating service worker...');
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((name) => name !== STATIC_CACHE && name !== DYNAMIC_CACHE)
-          .map((name) => {
-            console.log('[SW] Deleting old cache:', name);
-            return caches.delete(name);
-          })
-      );
-    })
+    Promise.all([
+      // Delete obsolete caches
+      caches.keys().then((cacheNames) => {
+        return Promise.all(
+          cacheNames
+            .filter((name) => name !== STATIC_CACHE && name !== DYNAMIC_CACHE && name !== IPFS_CACHE)
+            .map((name) => {
+              console.log('[SW] Deleting old cache:', name);
+              return caches.delete(name);
+            })
+        );
+      }),
+      // Trim IPFS cache if it exceeds the max
+      trimIPFSCache(),
+    ])
   );
   // Take control of all clients immediately
   self.clients.claim();
 });
 
-// Fetch event - network-first with cache fallback
+/**
+ * Trim the IPFS cache to stay under IPFS_CACHE_MAX_ENTRIES.
+ * Evicts oldest entries first (FIFO by insertion order).
+ */
+async function trimIPFSCache() {
+  try {
+    const cache = await caches.open(IPFS_CACHE);
+    const keys = await cache.keys();
+    if (keys.length > IPFS_CACHE_MAX_ENTRIES) {
+      const toDelete = keys.length - IPFS_CACHE_MAX_ENTRIES;
+      console.log(`[SW] Trimming IPFS cache: removing ${toDelete} entries`);
+      await Promise.all(
+        keys.slice(0, toDelete).map((key) => cache.delete(key))
+      );
+    }
+  } catch (err) {
+    console.error('[SW] Error trimming IPFS cache:', err);
+  }
+}
+
+// Fetch event - strategy depends on request type
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -54,13 +81,20 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Skip API calls and external resources
+  // IPFS content: network-first, cache response, fallback to cache
+  // IPFS content is immutable by design (CID = hash of content), safe to cache forever
+  if (url.pathname.startsWith('/api/ipfs/') && !url.pathname.endsWith('/add')) {
+    event.respondWith(handleIPFSRequest(request));
+    return;
+  }
+
+  // Skip other API calls and external resources
   if (url.pathname.startsWith('/api/') || !url.origin.includes(self.location.origin)) {
     return;
   }
 
-  // Skip IPFS and Arweave requests (dynamic content)
-  if (url.pathname.includes('/ipfs/') || url.pathname.includes('arweave')) {
+  // Skip Arweave requests (handled by arweave gateway)
+  if (url.pathname.includes('arweave')) {
     return;
   }
 
@@ -106,6 +140,37 @@ self.addEventListener('fetch', (event) => {
       })
   );
 });
+
+/**
+ * Handle IPFS requests with network-first, cache-fallback strategy.
+ * Since IPFS CIDs are content-addressed (hash = content), responses
+ * are immutable and safe to cache indefinitely.
+ */
+async function handleIPFSRequest(request) {
+  try {
+    const response = await fetch(request);
+
+    if (response && response.status === 200) {
+      const cache = await caches.open(IPFS_CACHE);
+      cache.put(request, response.clone());
+      return response;
+    }
+
+    // Non-200 response — try cache fallback
+    const cached = await caches.match(request);
+    return cached || response;
+  } catch (_err) {
+    // Network error — serve from cache
+    const cached = await caches.match(request);
+    if (cached) {
+      return cached;
+    }
+    return new Response('IPFS content unavailable offline', {
+      status: 503,
+      statusText: 'Service Unavailable',
+    });
+  }
+}
 
 // Handle push notifications (for future use)
 self.addEventListener('push', (event) => {

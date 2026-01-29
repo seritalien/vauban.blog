@@ -4,7 +4,7 @@
  * Tests for calculateContentHash, isValidStarknetAddress, formatAddress,
  * and other utility functions exported from the web3-utils package.
  */
-import { vi, type Mock } from 'vitest';
+import { vi, describe, it, expect } from 'vitest';
 
 // Mock starknet module to avoid RPC calls
 vi.mock('starknet', () => ({

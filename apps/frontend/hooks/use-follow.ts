@@ -23,6 +23,20 @@ function getFollowsAddress(): string | null {
 
 const FOLLOWS_ABI = followsAbi;
 
+/**
+ * Normalize an address from the contract to hex format (0x...).
+ * Handles both BigInt values and already-formatted hex strings.
+ */
+function toHexAddress(value: unknown): string {
+  const str = String(value);
+  try {
+    return '0x' + BigInt(str).toString(16);
+  } catch {
+    // Already a hex string or non-numeric — lowercase it
+    return str.toLowerCase();
+  }
+}
+
 function getReadContract(): Contract | null {
   const contractAddress = getFollowsAddress();
   if (!contractAddress) return null;
@@ -301,7 +315,8 @@ export function useFollowStats(userAddress: string | null | undefined): UseFollo
       const contract = getReadContract();
       if (!contract) return { items: [] as string[], hasMore: false };
       const list = await contract.get_followers(userAddress!, PAGE_SIZE, 0);
-      const items = Array.isArray(list) ? list.map((f: unknown) => String(f)) : [];
+      // Convert BigInt addresses to hex format (0x...)
+      const items = Array.isArray(list) ? list.map((f: unknown) => toHexAddress(f)) : [];
       const totalCount = statsQuery.data?.followerCount ?? 0;
       return { items, hasMore: items.length < totalCount };
     },
@@ -315,7 +330,8 @@ export function useFollowStats(userAddress: string | null | undefined): UseFollo
       const contract = getReadContract();
       if (!contract) return { items: [] as string[], hasMore: false };
       const list = await contract.get_following(userAddress!, PAGE_SIZE, 0);
-      const items = Array.isArray(list) ? list.map((f: unknown) => String(f)) : [];
+      // Convert BigInt addresses to hex format (0x...)
+      const items = Array.isArray(list) ? list.map((f: unknown) => toHexAddress(f)) : [];
       const totalCount = statsQuery.data?.followingCount ?? 0;
       return { items, hasMore: items.length < totalCount };
     },
@@ -335,8 +351,9 @@ export function useFollowStats(userAddress: string | null | undefined): UseFollo
 
     const offset = current.items.length;
     const moreFollowers = await contract.get_followers(userAddress, PAGE_SIZE, offset);
+    // Convert BigInt addresses to hex format (0x...)
     const newItems = Array.isArray(moreFollowers)
-      ? moreFollowers.map((f: unknown) => String(f))
+      ? moreFollowers.map((f: unknown) => toHexAddress(f))
       : [];
 
     queryClient.setQueryData(followersKey, {
@@ -353,8 +370,9 @@ export function useFollowStats(userAddress: string | null | undefined): UseFollo
 
     const offset = current.items.length;
     const moreFollowing = await contract.get_following(userAddress, PAGE_SIZE, offset);
+    // Convert BigInt addresses to hex format (0x...)
     const newItems = Array.isArray(moreFollowing)
-      ? moreFollowing.map((f: unknown) => String(f))
+      ? moreFollowing.map((f: unknown) => toHexAddress(f))
       : [];
 
     queryClient.setQueryData(followingKey, {

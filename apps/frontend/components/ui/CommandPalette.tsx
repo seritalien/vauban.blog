@@ -425,30 +425,7 @@ export const CommandPalette: FC<CommandPaletteProps> = ({
   );
 };
 
-/**
- * Hook to manage command palette state with keyboard shortcut.
- */
-export const useCommandPalette = () => {
-  const [isOpen, setIsOpen] = useState(false);
-
-  useEffect(() => {
-    const handleKeyDown = (e: globalThis.KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setIsOpen((prev) => !prev);
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  return {
-    isOpen,
-    open: () => setIsOpen(true),
-    close: () => setIsOpen(false),
-    toggle: () => setIsOpen((prev) => !prev),
-  };
-};
+// Re-export from the extracted hook file for backward compatibility
+export { useCommandPalette } from '@/hooks/use-command-palette';
 
 export default CommandPalette;

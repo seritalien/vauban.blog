@@ -38,7 +38,7 @@ export default function MessageThread({
             Messages chiffrés
           </h3>
           <p className="text-gray-500 dark:text-gray-400 max-w-sm">
-            Vos messages sont chiffrés de bout en bout. Personne d'autre ne peut les lire.
+            Vos messages sont chiffrés de bout en bout. Personne d&apos;autre ne peut les lire.
           </p>
         </div>
       </div>

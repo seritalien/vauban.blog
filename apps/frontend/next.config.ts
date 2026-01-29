@@ -18,6 +18,12 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: false,
   },
 
+  // ESLint configuration
+  eslint: {
+    // Don't fail build on warnings (like no-img-element)
+    ignoreDuringBuilds: false,
+  },
+
   // Image optimization
   images: {
     domains: ['localhost', 'arweave.net'],

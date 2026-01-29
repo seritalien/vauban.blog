@@ -1,4 +1,4 @@
-import { vi } from 'vitest';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 
 // =============================================================================
 // FILE 2: Crypto Tests (Web Crypto API - ECDH + AES-GCM)
@@ -13,19 +13,19 @@ function createMockIDB() {
   const mockObjectStore = {
     put: vi.fn((data: { id: string }) => {
       store.set(data.id, data);
-      const request = { result: undefined, error: null } as any;
+      const request = { result: undefined, error: null } as unknown as IDBRequest & { onsuccess?: () => void };
       setTimeout(() => request.onsuccess?.(), 0);
       return request;
     }),
     get: vi.fn((key: string) => {
       const result = store.get(key);
-      const request = { result, error: null } as any;
+      const request = { result, error: null } as unknown as IDBRequest & { onsuccess?: () => void };
       setTimeout(() => request.onsuccess?.(), 0);
       return request;
     }),
     delete: vi.fn((key: string) => {
       store.delete(key);
-      const request = { result: undefined, error: null } as any;
+      const request = { result: undefined, error: null } as unknown as IDBRequest & { onsuccess?: () => void };
       setTimeout(() => request.onsuccess?.(), 0);
       return request;
     }),
@@ -42,7 +42,7 @@ function createMockIDB() {
   };
 
   const mockOpen = vi.fn(() => {
-    const request = { result: mockDB, error: null } as any;
+    const request = { result: mockDB, error: null } as unknown as IDBOpenDBRequest & { onupgradeneeded?: (e: { target: IDBOpenDBRequest }) => void; onsuccess?: () => void };
     setTimeout(() => {
       request.onupgradeneeded?.({ target: request });
       request.onsuccess?.();

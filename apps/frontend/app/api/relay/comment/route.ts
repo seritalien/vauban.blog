@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Account, RpcProvider, Contract, ec, hash } from 'starknet';
+import { eventBus } from '@/lib/event-bus';
 
 // Relayer account (funded dev account that pays for gas)
 const RELAYER_PRIVATE_KEY = process.env.RELAYER_PRIVATE_KEY || '0x76f2ccdb23f29bc7b69278e947c01c6160a31cf02c19d06d0f6e5ab1d768b86';
@@ -99,6 +100,9 @@ export async function POST(request: NextRequest) {
 
     // Wait for transaction
     await provider.waitForTransaction(result.transaction_hash);
+
+    // Notify SSE listeners so other browser tabs see the comment in real-time
+    eventBus.emit('comment:added', { postId, author: userAddress });
 
     console.log(`Comment relayed successfully: ${result.transaction_hash}`);
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getThreadPosts, getPost } from '@vauban/web3-utils';
 import { fetchPostContent } from '@/hooks/use-posts';
@@ -30,14 +30,9 @@ export default function InlineThread({
 }: InlineThreadProps) {
   const [posts, setPosts] = useState<ThreadPostItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const hasLoadedRef = useRef(false);
 
-  useEffect(() => {
-    if (isExpanded && posts.length === 0) {
-      loadThreadPosts();
-    }
-  }, [isExpanded, threadRootId]);
-
-  const loadThreadPosts = async () => {
+  const loadThreadPosts = useCallback(async () => {
     setIsLoading(true);
     try {
       const metas = await getThreadPosts(threadRootId, 50, 0);
@@ -89,7 +84,19 @@ export default function InlineThread({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [threadRootId]);
+
+  useEffect(() => {
+    // Reset load state when threadRootId changes
+    hasLoadedRef.current = false;
+  }, [threadRootId]);
+
+  useEffect(() => {
+    if (isExpanded && !hasLoadedRef.current) {
+      hasLoadedRef.current = true;
+      void loadThreadPosts();
+    }
+  }, [isExpanded, loadThreadPosts]);
 
   return (
     <AnimatePresence>

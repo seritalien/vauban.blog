@@ -1,18 +1,46 @@
 'use client';
 
-import { Suspense } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import PostEditor from '@/components/editor/PostEditor';
 import Link from 'next/link';
+import { getDrafts } from '@/lib/drafts';
 
 // Disable static generation for this page (requires IPFS client-side)
 export const dynamic = 'force-dynamic';
 
+// How recently a draft must have been updated to auto-resume (1 hour)
+const AUTO_RESUME_MAX_AGE_MS = 3_600_000;
+
 function AdminPageInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const draftId = searchParams.get('draft');
+  const draftIdParam = searchParams.get('draft');
   const fromPage = searchParams.get('from');
+
+  // Auto-resume the most recent draft when no explicit ?draft= param
+  const [resolvedDraftId, setResolvedDraftId] = useState<string | null>(draftIdParam);
+
+  useEffect(() => {
+    if (draftIdParam) return; // Explicit draft param takes precedence
+
+    const drafts = getDrafts();
+    if (drafts.length === 0) return;
+
+    const latest = drafts[0]; // Most recent (sorted by updatedAt desc)
+    const updatedAt = new Date(latest.updatedAt).getTime();
+    const isRecent = Date.now() - updatedAt < AUTO_RESUME_MAX_AGE_MS;
+    const hasContent = !!(latest.title || latest.content);
+
+    if (isRecent && hasContent) {
+      setResolvedDraftId(latest.id);
+      // Update URL to reflect the resumed draft
+      const params = new URLSearchParams();
+      params.set('draft', latest.id);
+      if (fromPage) params.set('from', fromPage);
+      window.history.replaceState(null, '', `/admin?${params.toString()}`);
+    }
+  }, [draftIdParam, fromPage]);
 
   return (
     <div className="min-h-screen">
@@ -31,9 +59,13 @@ function AdminPageInner() {
       {/* PostEditor handles everything */}
       <PostEditor
         mode="create"
-        draftId={draftId}
+        draftId={resolvedDraftId}
         onDraftIdChange={(id) => {
-          window.history.replaceState(null, '', `/admin?draft=${id}`);
+          setResolvedDraftId(id);
+          const params = new URLSearchParams();
+          params.set('draft', id);
+          if (fromPage) params.set('from', fromPage);
+          window.history.replaceState(null, '', `/admin?${params.toString()}`);
         }}
         onSuccess={() => {
           router.push(fromPage === 'feed' ? '/feed' : '/');

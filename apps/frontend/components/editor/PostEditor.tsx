@@ -9,10 +9,12 @@ import TiptapSplitEditor, { type TiptapSplitEditorHandle } from '@/components/ed
 import TagInput from '@/components/editor/TagInput';
 import SaveStatusIndicator from '@/components/editor/SaveStatusIndicator';
 import DraftRecoveryModal from '@/components/editor/DraftRecoveryModal';
-import AIAssistant from '@/components/editor/AIAssistant';
-import AISettingsPanel from '@/components/admin/AISettingsPanel';
+import dynamic from 'next/dynamic';
 import FieldWithAI from '@/components/editor/FieldWithAI';
-import FloatingAIToolbar from '@/components/editor/FloatingAIToolbar';
+
+const AIAssistant = dynamic(() => import('@/components/editor/AIAssistant'), { ssr: false });
+const AISettingsPanel = dynamic(() => import('@/components/admin/AISettingsPanel'), { ssr: false });
+const FloatingAIToolbar = dynamic(() => import('@/components/editor/FloatingAIToolbar'), { ssr: false });
 import {
   getDraft,
   saveDraft,

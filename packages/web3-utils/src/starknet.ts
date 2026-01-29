@@ -4,6 +4,16 @@ import { Contract, RpcProvider, Account, AccountInterface, shortString } from 's
 type AccountLike = Account | AccountInterface;
 import type { PostMetadata, CommentMetadata } from '@vauban/shared-types';
 
+// Static ABI imports — avoids dynamic import() code-splitting that breaks in browser context
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+import blogRegistryAbi from './abis/blog_registry.json';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+import socialAbi from './abis/social.json';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+import roleRegistryAbi from './abis/role_registry.json';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+import reputationAbi from './abis/reputation.json';
+
 // ============================================================================
 // PROVIDER CONFIGURATION
 // ============================================================================
@@ -110,8 +120,7 @@ export async function getPostCount(): Promise<number> {
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(blogRegistryAbi as any, address, provider);
 
     const result = await contract.get_post_count();
     return Number(result);
@@ -144,8 +153,7 @@ export async function getPost(postId: string): Promise<PostMetadata> {
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(blogRegistryAbi as any, address, provider);
 
     const result = await contract.get_post(postId);
 
@@ -187,8 +195,7 @@ export async function getPosts(limit: number = 10, offset: number = 0): Promise<
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(blogRegistryAbi as any, address, provider);
 
     const result = await contract.get_posts(limit, offset);
 
@@ -256,8 +263,7 @@ export async function publishPost(
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, account);
+    const contract = new Contract(blogRegistryAbi as any, address, account);
 
     // Split strings into two parts for felt252 storage (31 chars each)
     const [arweave1, arweave2] = splitStringForFelt252(arweaveTxId);
@@ -310,8 +316,7 @@ export async function publishPostExtended(
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, account);
+    const contract = new Contract(blogRegistryAbi as any, address, account);
 
     const [arweave1, arweave2] = splitStringForFelt252(arweaveTxId);
     const [ipfs1, ipfs2] = splitStringForFelt252(ipfsCid);
@@ -393,14 +398,133 @@ export async function continueThread(
 }
 
 /**
+ * Batch publish multiple thread continuations in a single transaction using multicall.
+ * This solves nonce issues by bundling all posts into one atomic transaction.
+ *
+ * @param account - The account to use for signing
+ * @param posts - Array of prepared posts with { arweaveTxId, ipfsCid, contentHash }
+ * @param threadRootId - The root post ID that all continuations reference
+ * @returns Transaction hash
+ */
+export async function continueThreadBatch(
+  account: AccountLike,
+  posts: Array<{ arweaveTxId: string; ipfsCid: string; contentHash: string }>,
+  threadRootId: string | number
+): Promise<string> {
+  if (posts.length === 0) {
+    throw new Error('No posts to publish');
+  }
+
+  const address = getBlogRegistryAddress();
+
+  // Build an array of calls for multicall
+  const calls = posts.map((post) => {
+    const [arweave1, arweave2] = splitStringForFelt252(post.arweaveTxId);
+    const [ipfs1, ipfs2] = splitStringForFelt252(post.ipfsCid);
+
+    return {
+      contractAddress: address,
+      entrypoint: 'publish_post_extended',
+      calldata: [
+        shortString.encodeShortString(arweave1),
+        arweave2 ? shortString.encodeShortString(arweave2) : '0',
+        shortString.encodeShortString(ipfs1),
+        ipfs2 ? shortString.encodeShortString(ipfs2) : '0',
+        post.contentHash,
+        '0', // price_low (u256 low part)
+        '0', // price_high (u256 high part)
+        0, // is_encrypted (false)
+        POST_TYPE_THREAD,
+        '0', // parent_id
+        String(threadRootId),
+      ],
+    };
+  });
+
+  try {
+    // Execute all calls in a single transaction
+    const result = await account.execute(calls);
+    await account.waitForTransaction(result.transaction_hash);
+
+    console.log(`Thread batch published (${posts.length} posts): TX ${result.transaction_hash}`);
+    return result.transaction_hash;
+  } catch (error) {
+    console.error('Error publishing thread batch:', error);
+    throw new Error(`Failed to publish thread batch: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Publish an entire thread atomically in a single transaction.
+ * This includes the thread root and all continuations, avoiding nonce issues.
+ *
+ * @param account - The account to use for signing
+ * @param posts - Array of prepared posts (first one becomes thread root)
+ * @returns The thread root post ID
+ */
+export async function publishThreadAtomic(
+  account: AccountLike,
+  posts: Array<{ arweaveTxId: string; ipfsCid: string; contentHash: string }>
+): Promise<string> {
+  if (posts.length === 0) {
+    throw new Error('No posts to publish');
+  }
+
+  const address = getBlogRegistryAddress();
+
+  // Get current post count to predict the thread root ID
+  const currentPostCount = await getPostCount();
+  const predictedThreadRootId = currentPostCount + 1;
+
+  // Build calls: first post is thread root (threadRootId=0), rest reference the predicted root ID
+  const calls = posts.map((post, index) => {
+    const [arweave1, arweave2] = splitStringForFelt252(post.arweaveTxId);
+    const [ipfs1, ipfs2] = splitStringForFelt252(post.ipfsCid);
+
+    // First post: thread root (threadRootId = 0)
+    // Subsequent posts: continuation (threadRootId = predicted root ID)
+    const threadRootId = index === 0 ? '0' : String(predictedThreadRootId);
+
+    return {
+      contractAddress: address,
+      entrypoint: 'publish_post_extended',
+      calldata: [
+        shortString.encodeShortString(arweave1),
+        arweave2 ? shortString.encodeShortString(arweave2) : '0',
+        shortString.encodeShortString(ipfs1),
+        ipfs2 ? shortString.encodeShortString(ipfs2) : '0',
+        post.contentHash,
+        '0', // price_low (u256 low part)
+        '0', // price_high (u256 high part)
+        0, // is_encrypted (false)
+        POST_TYPE_THREAD,
+        '0', // parent_id
+        threadRootId,
+      ],
+    };
+  });
+
+  try {
+    // Execute ALL posts in a single atomic transaction
+    const result = await account.execute(calls);
+    await account.waitForTransaction(result.transaction_hash);
+
+    console.log(`Thread published atomically (${posts.length} posts, root=${predictedThreadRootId}): TX ${result.transaction_hash}`);
+    return String(predictedThreadRootId);
+  } catch (error) {
+    console.error('Error publishing thread atomically:', error);
+    throw new Error(`Failed to publish thread: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
  * Pin a post to author's profile
  */
 export async function pinPost(account: AccountLike, postId: string): Promise<string> {
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, account);
+    const contract = new Contract(blogRegistryAbi as any, address, account);
 
     const result = await contract.pin_post(postId);
     await account.waitForTransaction(result.transaction_hash);
@@ -420,8 +544,7 @@ export async function unpinPost(account: AccountLike, postId: string): Promise<s
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, account);
+    const contract = new Contract(blogRegistryAbi as any, address, account);
 
     const result = await contract.unpin_post(postId);
     await account.waitForTransaction(result.transaction_hash);
@@ -442,8 +565,7 @@ export async function getPinnedPost(authorAddress: string): Promise<string | nul
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(blogRegistryAbi as any, address, provider);
 
     const result = await contract.get_pinned_post(authorAddress);
     const pinnedId = Number(result);
@@ -466,8 +588,7 @@ export async function getPostsByType(
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(blogRegistryAbi as any, address, provider);
 
     const result = await contract.get_posts_by_type(postType, limit, offset);
 
@@ -512,8 +633,7 @@ export async function getPostReplies(
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(blogRegistryAbi as any, address, provider);
 
     const result = await contract.get_post_replies(parentId, limit, offset);
 
@@ -554,8 +674,7 @@ export async function getReplyCount(parentId: string): Promise<number> {
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(blogRegistryAbi as any, address, provider);
 
     const result = await contract.get_reply_count(parentId);
     return Number(result);
@@ -577,8 +696,7 @@ export async function getThreadPosts(
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(blogRegistryAbi as any, address, provider);
 
     const result = await contract.get_thread_posts(threadRootId, limit, offset);
 
@@ -619,8 +737,7 @@ export async function getThreadPostCount(threadRootId: string): Promise<number> 
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(blogRegistryAbi as any, address, provider);
 
     const result = await contract.get_thread_post_count(threadRootId);
     return Number(result);
@@ -638,8 +755,7 @@ export async function getPostsCountByType(postType: number): Promise<number> {
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(blogRegistryAbi as any, address, provider);
 
     const result = await contract.get_posts_count_by_type(postType);
     return Number(result);
@@ -657,8 +773,7 @@ export async function getPublishCooldown(): Promise<number> {
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(blogRegistryAbi as any, address, provider);
 
     const result = await contract.get_publish_cooldown();
     return Number(result);
@@ -678,8 +793,7 @@ export async function setPublishCooldown(
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, account);
+    const contract = new Contract(blogRegistryAbi as any, address, account);
 
     const result = await contract.set_publish_cooldown(cooldownSeconds);
     await account.waitForTransaction(result.transaction_hash);
@@ -697,8 +811,7 @@ export async function hasAccess(postId: string, userAddress: string): Promise<bo
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(blogRegistryAbi as any, address, provider);
 
     const result = await contract.has_access(postId, userAddress);
     return Boolean(result);
@@ -715,8 +828,7 @@ export async function purchasePost(account: AccountLike, postId: string): Promis
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, account);
+    const contract = new Contract(blogRegistryAbi as any, address, account);
 
     const result = await contract.purchase_post(postId);
 
@@ -738,8 +850,7 @@ export async function getPostPrice(postId: string): Promise<string> {
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(blogRegistryAbi as any, address, provider);
 
     const post = await contract.get_post(postId);
     return post.price.toString();
@@ -762,8 +873,7 @@ export async function updatePost(
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, account);
+    const contract = new Contract(blogRegistryAbi as any, address, account);
 
     // Split strings into two parts for felt252 storage (31 chars each)
     const [arweave1, arweave2] = splitStringForFelt252(arweaveTxId);
@@ -795,8 +905,7 @@ export async function deletePost(account: AccountLike, postId: string): Promise<
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, account);
+    const contract = new Contract(blogRegistryAbi as any, address, account);
 
     const result = await contract.delete_post(postId);
 
@@ -831,8 +940,7 @@ export async function getPostVersion(postId: string, version: number): Promise<P
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(blogRegistryAbi as any, address, provider);
 
     const result = await contract.get_post_version(postId, version);
 
@@ -863,8 +971,7 @@ export async function getPostVersionCount(postId: string): Promise<number> {
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(blogRegistryAbi as any, address, provider);
 
     const result = await contract.get_post_version_count(postId);
     return Number(result);
@@ -886,8 +993,7 @@ export async function getPostVersions(
   const address = getBlogRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/blog_registry.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(blogRegistryAbi as any, address, provider);
 
     const result = await contract.get_post_versions(postId, limit, offset);
 
@@ -928,8 +1034,7 @@ export async function getCommentsForPost(
   const address = getSocialAddress();
 
   try {
-    const { default: abi } = await import('./abis/social.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(socialAbi as any, address, provider);
 
     const result = await contract.get_comments_for_post(postId, limit, offset);
 
@@ -957,8 +1062,7 @@ export async function getCommentCountForPost(postId: string): Promise<number> {
   const address = getSocialAddress();
 
   try {
-    const { default: abi } = await import('./abis/social.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(socialAbi as any, address, provider);
 
     const result = await contract.get_comment_count_for_post(postId);
     return Number(result);
@@ -980,8 +1084,7 @@ export async function addComment(
   const address = getSocialAddress();
 
   try {
-    const { default: abi } = await import('./abis/social.json');
-    const contract = new Contract(abi, address, account);
+    const contract = new Contract(socialAbi as any, address, account);
 
     const result = await contract.add_comment(postId, contentHash, parentCommentId);
 
@@ -1002,8 +1105,7 @@ export async function likePost(account: AccountLike, postId: string): Promise<st
   const address = getSocialAddress();
 
   try {
-    const { default: abi } = await import('./abis/social.json');
-    const contract = new Contract(abi, address, account);
+    const contract = new Contract(socialAbi as any, address, account);
 
     const result = await contract.like_post(postId);
 
@@ -1025,8 +1127,7 @@ export async function hasLikedPost(postId: string, userAddress: string): Promise
   const address = getSocialAddress();
 
   try {
-    const { default: abi } = await import('./abis/social.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(socialAbi as any, address, provider);
 
     const result = await contract.has_liked_post(postId, userAddress);
     return Boolean(result);
@@ -1044,8 +1145,7 @@ export async function getPostLikes(postId: string): Promise<number> {
   const address = getSocialAddress();
 
   try {
-    const { default: abi } = await import('./abis/social.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(socialAbi as any, address, provider);
 
     const result = await contract.get_post_likes(postId);
     return Number(result);
@@ -1062,8 +1162,7 @@ export async function unlikePost(account: AccountLike, postId: string): Promise<
   const address = getSocialAddress();
 
   try {
-    const { default: abi } = await import('./abis/social.json');
-    const contract = new Contract(abi, address, account);
+    const contract = new Contract(socialAbi as any, address, account);
 
     const result = await contract.unlike_post(postId);
 
@@ -1084,8 +1183,7 @@ export async function likeComment(account: AccountLike, commentId: string): Prom
   const address = getSocialAddress();
 
   try {
-    const { default: abi } = await import('./abis/social.json');
-    const contract = new Contract(abi, address, account);
+    const contract = new Contract(socialAbi as any, address, account);
 
     const result = await contract.like_comment(commentId);
 
@@ -1106,8 +1204,7 @@ export async function unlikeComment(account: AccountLike, commentId: string): Pr
   const address = getSocialAddress();
 
   try {
-    const { default: abi } = await import('./abis/social.json');
-    const contract = new Contract(abi, address, account);
+    const contract = new Contract(socialAbi as any, address, account);
 
     const result = await contract.unlike_comment(commentId);
 
@@ -1129,8 +1226,7 @@ export async function hasLikedComment(commentId: string, userAddress: string): P
   const address = getSocialAddress();
 
   try {
-    const { default: abi } = await import('./abis/social.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(socialAbi as any, address, provider);
 
     const result = await contract.has_liked_comment(commentId, userAddress);
     return Boolean(result);
@@ -1160,8 +1256,7 @@ export async function addCommentWithSessionKey(
   const address = getSocialAddress();
 
   try {
-    const { default: abi } = await import('./abis/social.json');
-    const contract = new Contract(abi, address, relayerAccount);
+    const contract = new Contract(socialAbi as any, address, relayerAccount);
 
     const result = await contract.add_comment_with_session_key(
       postId,
@@ -1190,8 +1285,7 @@ export async function getSessionKeyNonce(sessionPublicKey: string): Promise<numb
   const address = getSocialAddress();
 
   try {
-    const { default: abi } = await import('./abis/social.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(socialAbi as any, address, provider);
 
     const result = await contract.get_session_key_nonce(sessionPublicKey);
     return Number(result);
@@ -1209,8 +1303,7 @@ export async function getSessionKeyManager(): Promise<string> {
   const address = getSocialAddress();
 
   try {
-    const { default: abi } = await import('./abis/social.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(socialAbi as any, address, provider);
 
     const result = await contract.get_session_key_manager();
     return result.toString();
@@ -1230,8 +1323,7 @@ export async function setSessionKeyManager(
   const address = getSocialAddress();
 
   try {
-    const { default: abi } = await import('./abis/social.json');
-    const contract = new Contract(abi, address, account);
+    const contract = new Contract(socialAbi as any, address, account);
 
     const result = await contract.set_session_key_manager(managerAddress);
 
@@ -1372,8 +1464,7 @@ export async function getUserRole(userAddress: string): Promise<UserRoleInfo> {
   const address = getRoleRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/role_registry.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(roleRegistryAbi as any, address, provider);
 
     const result = await contract.get_user_role(userAddress);
 
@@ -1409,8 +1500,7 @@ export async function hasMinRole(userAddress: string, minRole: number): Promise<
   const address = getRoleRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/role_registry.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(roleRegistryAbi as any, address, provider);
 
     const result = await contract.has_role(userAddress, minRole);
     return Boolean(result);
@@ -1428,8 +1518,7 @@ export async function getRoleStats(): Promise<RoleStats> {
   const address = getRoleRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/role_registry.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(roleRegistryAbi as any, address, provider);
 
     const [totalUsers, reader, writer, contributor, moderator, editor, admin, owner] = await Promise.all([
       contract.get_total_users(),
@@ -1478,8 +1567,7 @@ export async function grantRole(
   const address = getRoleRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/role_registry.json');
-    const contract = new Contract(abi, address, account);
+    const contract = new Contract(roleRegistryAbi as any, address, account);
 
     const result = await contract.grant_role(userAddress, role);
 
@@ -1500,8 +1588,7 @@ export async function revokeRole(account: AccountLike, userAddress: string): Pro
   const address = getRoleRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/role_registry.json');
-    const contract = new Contract(abi, address, account);
+    const contract = new Contract(roleRegistryAbi as any, address, account);
 
     const result = await contract.revoke_role(userAddress);
 
@@ -1522,8 +1609,7 @@ export async function registerUser(account: AccountLike): Promise<string> {
   const address = getRoleRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/role_registry.json');
-    const contract = new Contract(abi, address, account);
+    const contract = new Contract(roleRegistryAbi as any, address, account);
 
     const result = await contract.register_user();
 
@@ -1545,8 +1631,7 @@ export async function canPublishImmediately(userAddress: string): Promise<boolea
   const address = getRoleRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/role_registry.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(roleRegistryAbi as any, address, provider);
 
     const result = await contract.can_publish_immediately(userAddress);
     return Boolean(result);
@@ -1564,8 +1649,7 @@ export async function canManageUsers(userAddress: string): Promise<boolean> {
   const address = getRoleRegistryAddress();
 
   try {
-    const { default: abi } = await import('./abis/role_registry.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(roleRegistryAbi as any, address, provider);
 
     const result = await contract.can_manage_users(userAddress);
     return Boolean(result);
@@ -1681,8 +1765,7 @@ export async function getUserReputation(userAddress: string): Promise<UserReputa
   const address = getReputationAddress();
 
   try {
-    const { default: abi } = await import('./abis/reputation.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(reputationAbi as any, address, provider);
 
     const result = await contract.get_reputation(userAddress);
     const badges = BigInt(result.badges.toString());
@@ -1730,8 +1813,7 @@ export async function getUserPoints(userAddress: string): Promise<bigint> {
   const address = getReputationAddress();
 
   try {
-    const { default: abi } = await import('./abis/reputation.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(reputationAbi as any, address, provider);
 
     const result = await contract.get_points(userAddress);
     return BigInt(result.toString());
@@ -1749,8 +1831,7 @@ export async function getUserLevel(userAddress: string): Promise<number> {
   const address = getReputationAddress();
 
   try {
-    const { default: abi } = await import('./abis/reputation.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(reputationAbi as any, address, provider);
 
     const result = await contract.get_level(userAddress);
     return Number(result);
@@ -1768,8 +1849,7 @@ export async function getUserBadges(userAddress: string): Promise<{ bitmap: bigi
   const address = getReputationAddress();
 
   try {
-    const { default: abi } = await import('./abis/reputation.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(reputationAbi as any, address, provider);
 
     const result = await contract.get_badges(userAddress);
     const bitmap = BigInt(result.toString());
@@ -1792,8 +1872,7 @@ export async function hasBadge(userAddress: string, badge: bigint): Promise<bool
   const address = getReputationAddress();
 
   try {
-    const { default: abi } = await import('./abis/reputation.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(reputationAbi as any, address, provider);
 
     const result = await contract.has_badge(userAddress, badge);
     return Boolean(result);
@@ -1811,8 +1890,7 @@ export async function getReputationStats(): Promise<{ totalUsers: number; totalP
   const address = getReputationAddress();
 
   try {
-    const { default: abi } = await import('./abis/reputation.json');
-    const contract = new Contract(abi, address, provider);
+    const contract = new Contract(reputationAbi as any, address, provider);
 
     const [totalUsers, totalPoints] = await Promise.all([
       contract.get_total_users(),

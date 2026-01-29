@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { usePosts, VerifiedPost } from '@/hooks/use-posts';
 import { getProfile, formatAddress, getDisplayName, toAddressString } from '@/lib/profiles';
@@ -25,8 +25,9 @@ interface AuthorData {
 
 export default function AuthorsDiscoveryPage() {
   const [sortBy, setSortBy] = useState<SortOption>('most-posts');
-  const [authors, setAuthors] = useState<AuthorData[]>([]);
+  const [engagementMap, setEngagementMap] = useState<Map<string, { totalLikes: number; totalComments: number }>>(new Map());
   const [isLoadingEngagement, setIsLoadingEngagement] = useState(false);
+  const engagementLoadedForRef = useRef<string>('');
 
   const { posts, isLoading: isLoadingPosts, error } = usePosts(100, 0);
 
@@ -43,10 +44,10 @@ export default function AuthorsDiscoveryPage() {
     return map;
   }, [posts]);
 
-  // Build basic author data
-  useEffect(() => {
+  // Build basic author data (pure derivation — no effect needed)
+  const basicAuthors = useMemo(() => {
     const authorAddresses = Array.from(authorPostsMap.keys());
-    const basicAuthors: AuthorData[] = authorAddresses.map((address) => {
+    return authorAddresses.map((address) => {
       const authorPosts = authorPostsMap.get(address) ?? [];
       const sortedPosts = [...authorPosts].sort(
         (a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0)
@@ -60,24 +61,31 @@ export default function AuthorsDiscoveryPage() {
         firstPostDate: sortedPosts[0]?.createdAt ?? null,
       };
     });
-    setAuthors(basicAuthors);
   }, [authorPostsMap]);
 
-  // Fetch engagement data for all authors
+  // Stable key for the current set of authors (avoids ref-identity issues)
+  const authorAddressKey = useMemo(
+    () => basicAuthors.map((a) => a.address).join(','),
+    [basicAuthors]
+  );
+
+  // Fetch engagement data once per unique author set
   useEffect(() => {
+    if (basicAuthors.length === 0 || authorAddressKey === engagementLoadedForRef.current) return;
+    engagementLoadedForRef.current = authorAddressKey;
+
+    let cancelled = false;
+
     async function loadEngagement() {
-      if (authors.length === 0 || isLoadingEngagement) return;
-
       setIsLoadingEngagement(true);
-
       try {
-        const updatedAuthors = await Promise.all(
-          authors.map(async (author) => {
+        const newMap = new Map<string, { totalLikes: number; totalComments: number }>();
+        await Promise.all(
+          basicAuthors.map(async (author) => {
             const authorPosts = authorPostsMap.get(author.address) ?? [];
             let totalLikes = 0;
             let totalComments = 0;
 
-            // Fetch engagement for each post
             for (const post of authorPosts) {
               try {
                 const [likes, comments] = await Promise.all([
@@ -90,27 +98,28 @@ export default function AuthorsDiscoveryPage() {
                 console.warn(`Error fetching engagement for post ${post.id}:`, err);
               }
             }
-
-            return {
-              ...author,
-              totalLikes,
-              totalComments,
-            };
+            newMap.set(author.address, { totalLikes, totalComments });
           })
         );
-        setAuthors(updatedAuthors);
+        if (!cancelled) setEngagementMap(newMap);
       } catch (err) {
         console.error('Error loading engagement:', err);
       } finally {
-        setIsLoadingEngagement(false);
+        if (!cancelled) setIsLoadingEngagement(false);
       }
     }
 
-    // Only fetch if we have basic author data
-    if (authors.length > 0 && authors[0]?.totalLikes === 0) {
-      loadEngagement();
-    }
-  }, [authors.length, authorPostsMap]);
+    loadEngagement();
+    return () => { cancelled = true; };
+  }, [authorAddressKey, basicAuthors, authorPostsMap]);
+
+  // Merge basic author data with engagement
+  const authors = useMemo(() => {
+    return basicAuthors.map((author) => {
+      const engagement = engagementMap.get(author.address);
+      return engagement ? { ...author, ...engagement } : author;
+    });
+  }, [basicAuthors, engagementMap]);
 
   // Sort authors
   const sortedAuthors = useMemo(() => {

@@ -18,8 +18,8 @@ export function QueryProvider({ children }: QueryProviderProps) {
           queries: {
             // Don't refetch on window focus by default
             refetchOnWindowFocus: false,
-            // Keep data fresh for 5 minutes
-            staleTime: 5 * 60 * 1000,
+            // Keep data fresh for 30 minutes (SSE handles real-time invalidation)
+            staleTime: 30 * 60 * 1000,
             // Cache for 30 minutes
             gcTime: 30 * 60 * 1000,
             // Retry failed requests once

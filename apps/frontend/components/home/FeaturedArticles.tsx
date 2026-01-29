@@ -53,7 +53,7 @@ export default function FeaturedArticles({ posts }: FeaturedArticlesProps) {
                   <div className="relative h-48 overflow-hidden">
                     <Image
                       src={post.coverImage}
-                      alt={post.title}
+                      alt={post.title ?? ''}
                       fill
                       sizes="(max-width: 768px) 100vw, 33vw"
                       className="object-cover transition-transform duration-300 hover:scale-105"

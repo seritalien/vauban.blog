@@ -8,6 +8,7 @@ import { SessionProvider } from '@/components/auth';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import { ServiceWorkerRegistration } from '@/components/pwa/ServiceWorkerRegistration';
+import { EventStreamListener } from '@/components/events/EventStreamListener';
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://vauban.blog';
 
@@ -81,6 +82,7 @@ export default function RootLayout({
         <SessionProvider>
           <ThemeProvider>
             <QueryProvider>
+              <EventStreamListener />
               <WalletProvider>
                 <ToastProvider>
                   <div className="min-h-screen flex flex-col">

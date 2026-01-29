@@ -25,6 +25,9 @@ export const AuthorProfileSchema = z.object({
   // Avatar URL (IPFS or external)
   avatar: z.string().url().optional(),
 
+  // IPFS CID of the user's E2E encryption public key
+  publicKeyCid: z.string().optional(),
+
   // Social links
   website: z.string().url().optional(),
   twitter: z.string()

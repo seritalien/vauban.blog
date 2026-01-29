@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { usePosts, VerifiedPost } from '@/hooks/use-posts';
 import { FeedTabs, Timeline, Composer, ThreadComposer, type FeedTab, type TimelinePost } from '@/components/feed';
 import { POST_TYPE_TWEET, POST_TYPE_THREAD, POST_TYPE_ARTICLE } from '@vauban/shared-types';
@@ -58,6 +58,9 @@ export default function FeedPage() {
   const [activeTab, setActiveTab] = useState<FeedTab>('for-you');
   const [showThreadComposer, setShowThreadComposer] = useState(false);
 
+  // Ref for infinite scroll sentinel
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
   // Handle post success - refresh the feed
   const handlePostSuccess = useCallback((postId: string) => {
     console.log('New bastion posted:', postId);
@@ -67,6 +70,32 @@ export default function FeedPage() {
       refetch();
     }, 2000);
   }, [refetch]);
+
+  // Infinite scroll with IntersectionObserver
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry.isIntersecting && hasMore && !isLoadingMore && !isLoading) {
+          loadMore();
+        }
+      },
+      {
+        root: null,
+        rootMargin: '200px', // Start loading before reaching the bottom
+        threshold: 0,
+      }
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasMore, isLoadingMore, isLoading, loadMore]);
 
   // Convert posts to timeline format
   const timelinePosts = useMemo(() => {
@@ -78,24 +107,32 @@ export default function FeedPage() {
     return new Set(followedAddresses.map((a) => a.toLowerCase()));
   }, [followedAddresses]);
 
+  // Helper: true if this post is a thread continuation (not a root)
+  const isThreadContinuation = useCallback((p: VerifiedPost) => {
+    return p.threadRootId && p.threadRootId !== '0' && p.threadRootId !== p.id;
+  }, []);
+
   const counts = useMemo(() => {
-    const articles = posts.filter(
+    // Exclude thread continuations from all counts to match Timeline display
+    const rootPosts = posts.filter((p) => !isThreadContinuation(p));
+
+    const articles = rootPosts.filter(
       (p) => (p.postType ?? POST_TYPE_ARTICLE) === POST_TYPE_ARTICLE
     ).length;
-    const threads = posts.filter(
+    const threads = rootPosts.filter(
       (p) => p.postType === POST_TYPE_THREAD
     ).length;
-    const followingPosts = posts.filter(
+    const followingPosts = rootPosts.filter(
       (p) => !p.parentId && followedSet.has(String(p.author).toLowerCase())
     ).length;
 
     return {
-      forYou: posts.filter((p) => !p.parentId).length,
+      forYou: rootPosts.filter((p) => !p.parentId).length,
       following: followingPosts,
       articles,
       threads,
     };
-  }, [posts, followedSet]);
+  }, [posts, followedSet, isThreadContinuation]);
 
   if (error) {
     return (
@@ -158,28 +195,23 @@ export default function FeedPage() {
         {/* Timeline */}
         <Timeline posts={timelinePosts} activeTab={activeTab} isLoading={isLoading} followedAddresses={followedAddresses} />
 
-        {/* Load more */}
-        {!isLoading && timelinePosts.length > 0 && hasMore && (
-          <div className="p-4 text-center">
-            <button
-              onClick={loadMore}
-              disabled={isLoadingMore}
-              className="text-blue-500 hover:text-blue-600 font-medium disabled:opacity-50"
-            >
-              {isLoadingMore ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  Chargement...
-                </span>
-              ) : (
-                'Charger plus'
-              )}
-            </button>
-          </div>
-        )}
+        {/* Infinite scroll sentinel & loading indicator */}
+        <div ref={sentinelRef} className="py-4">
+          {isLoadingMore && (
+            <div className="flex items-center justify-center gap-2 text-gray-500">
+              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              <span>Chargement...</span>
+            </div>
+          )}
+          {!hasMore && posts.length > 0 && (
+            <p className="text-center text-gray-400 text-sm">
+              Vous avez tout vu !
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

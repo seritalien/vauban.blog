@@ -4,12 +4,9 @@ import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useWallet } from '@/providers/wallet-provider';
 import { usePostBastion } from '@/hooks/use-post-bastion';
-import { getPublishCooldown } from '@vauban/web3-utils';
 import { useToast } from '@/components/ui/Toast';
 import { getProfile, getDisplayName } from '@/lib/profiles';
 import EmojiPicker from './EmojiPicker';
-
-const COOLDOWN_BUFFER_SECONDS = 2;
 
 interface ThreadPost {
   id: string;
@@ -37,14 +34,11 @@ export default function ThreadComposer({
   maxLength = 280,
 }: ThreadComposerProps) {
   const { isConnected, address } = useWallet();
-  const { postThreadStart, postThreadContinue, isPosting, error: postError, clearError } = usePostBastion();
+  const { postThread, isPosting, error: postError, clearError } = usePostBastion();
   const { showToast } = useToast();
   const [posts, setPosts] = useState<ThreadPost[]>([
     { id: '1', content: '' },
   ]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [publishProgress, setPublishProgress] = useState(0);
-  const [cooldownRemaining, setCooldownRemaining] = useState(0);
 
   const profile = address ? getProfile(address) : null;
   const displayName = address ? getDisplayName(address, profile) : '';
@@ -67,62 +61,25 @@ export default function ThreadComposer({
   }, [clearError]);
 
   /**
-   * Wait for the contract's publish cooldown with a visible countdown.
+   * Submit thread using batch multicall (just 2 transactions total!)
    */
-  const waitForCooldown = useCallback(async (seconds: number) => {
-    for (let remaining = seconds; remaining > 0; remaining--) {
-      setCooldownRemaining(remaining);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
-    setCooldownRemaining(0);
-  }, []);
-
   const handleSubmit = async () => {
-    const validPosts = posts.filter((p) => p.content.trim());
-    if (validPosts.length === 0 || !isConnected) return;
-
-    setIsSubmitting(true);
-    setPublishProgress(0);
+    const validPostContents = posts.filter((p) => p.content.trim()).map((p) => p.content);
+    if (validPostContents.length === 0 || !isConnected) return;
 
     try {
-      // Fetch the contract cooldown so we know how long to wait between posts
-      const cooldown = validPosts.length > 1 ? await getPublishCooldown() : 0;
-
-      // Post the first entry as thread root
-      const rootId = await postThreadStart(validPosts[0].content);
+      const rootId = await postThread(validPostContents);
       if (!rootId) {
-        showToast(postError ?? 'Failed to start thread', 'error');
-        setIsSubmitting(false);
+        showToast(postError ?? 'Failed to publish thread', 'error');
         return;
       }
 
-      setPublishProgress(1);
-
-      // Post remaining entries as continuations, waiting for cooldown between each
-      for (let i = 1; i < validPosts.length; i++) {
-        // Wait for the publish cooldown + buffer before posting next
-        if (cooldown > 0) {
-          await waitForCooldown(cooldown + COOLDOWN_BUFFER_SECONDS);
-        }
-
-        const continuationId = await postThreadContinue(validPosts[i].content, rootId);
-        if (!continuationId) {
-          showToast(`Thread partially published (${i}/${validPosts.length} posts)`, 'error');
-          break;
-        }
-        setPublishProgress(i + 1);
-      }
-
       setPosts([{ id: '1', content: '' }]);
-      showToast(`Thread published (${validPosts.length} posts)`, 'success');
+      showToast(`Thread published (${validPostContents.length} posts)`, 'success');
       onSuccess?.(rootId);
     } catch (error) {
       console.error('Failed to submit thread:', error);
       showToast('Failed to publish thread', 'error');
-    } finally {
-      setIsSubmitting(false);
-      setPublishProgress(0);
-      setCooldownRemaining(0);
     }
   };
 
@@ -268,13 +225,11 @@ export default function ThreadComposer({
         </div>
         <button
           onClick={handleSubmit}
-          disabled={!canSubmit || isSubmitting || isPosting}
+          disabled={!canSubmit || isPosting}
           className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium rounded-full transition-colors disabled:cursor-not-allowed"
         >
-          {isSubmitting
-            ? cooldownRemaining > 0
-              ? `Wait ${cooldownRemaining}s (${publishProgress}/${validPostCount})`
-              : `Publishing ${publishProgress}/${validPostCount}...`
+          {isPosting
+            ? 'Publishing...'
             : `Post thread (${validPostCount})`}
         </button>
       </div>

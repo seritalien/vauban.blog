@@ -123,13 +123,16 @@ export default function Timeline({ posts, activeTab, isLoading = false, followed
       filtered = posts.filter(
         (post) =>
           !post.parentId &&
-          !(post.threadRootId && post.threadRootId !== post.id) &&
+          // Skip thread continuations: threadRootId is set and different from post.id
+          // Note: "0" means not a thread continuation, so check for truthy non-zero value
+          !(post.threadRootId && post.threadRootId !== '0' && post.threadRootId !== post.id) &&
           followedSet.has(String(post.author).toLowerCase())
       );
     } else {
       filtered = posts.filter((post) => {
         // Skip thread continuations — only show thread roots in the feed
-        if (post.threadRootId && post.threadRootId !== post.id) return false;
+        // Note: threadRootId of "0" means not a thread continuation
+        if (post.threadRootId && post.threadRootId !== '0' && post.threadRootId !== post.id) return false;
 
         // Determine post type from postType number or contentType string
         const postTypeNum = post.postType ?? POST_TYPE_ARTICLE;

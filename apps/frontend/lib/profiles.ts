@@ -1,7 +1,8 @@
-// Author profile management using localStorage
-// In production, this could be stored on-chain or on IPFS
+// Author profile management using localStorage + IPFS for cross-device discovery
+// In production, the on-chain registry replaces IPFS as the source of truth.
 
 import { type AuthorProfile, type ProfileInput } from '@vauban/shared-types';
+import { uploadJSONToIPFSViaAPI, fetchJSONFromIPFSViaAPI } from '@/lib/ipfs-client';
 
 const PROFILES_STORAGE_KEY = 'vauban_profiles';
 
@@ -115,4 +116,49 @@ export function deleteProfile(address: string): boolean {
     return true;
   }
   return false;
+}
+
+// =============================================================================
+// IPFS PROFILE DISCOVERY
+// =============================================================================
+
+const PROFILE_CID_PREFIX = 'vauban-profile-cid-';
+
+/**
+ * Publish a profile to IPFS for cross-device discovery.
+ * Returns the IPFS CID of the published profile.
+ */
+export async function publishProfileToIPFS(profile: AuthorProfile): Promise<string> {
+  const cid = await uploadJSONToIPFSViaAPI(profile);
+
+  // Store the CID locally for fast retrieval
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(
+      `${PROFILE_CID_PREFIX}${normalizeAddress(profile.address)}`,
+      cid,
+    );
+  }
+
+  return cid;
+}
+
+/**
+ * Fetch a profile from IPFS by CID.
+ */
+export async function fetchProfileFromIPFS(cid: string): Promise<AuthorProfile | null> {
+  try {
+    return await fetchJSONFromIPFSViaAPI<AuthorProfile>(cid);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get the locally stored IPFS CID for a profile.
+ */
+export function getProfileCid(address: string): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(
+    `${PROFILE_CID_PREFIX}${normalizeAddress(address)}`,
+  );
 }

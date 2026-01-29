@@ -33,4 +33,12 @@ export const queryKeys = {
     all: ['author'] as const,
     stats: (address: string) => ['author', 'stats', address] as const,
   },
+  role: {
+    all: ['role'] as const,
+    user: (address: string) => ['role', 'user', address] as const,
+  },
+  sessionKey: {
+    all: ['sessionKey'] as const,
+    status: (address: string) => ['sessionKey', 'status', address] as const,
+  },
 } as const;

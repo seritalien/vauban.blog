@@ -1,15 +1,18 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useWallet } from '@/providers/wallet-provider';
 import {
   publishTweet,
   publishReply,
   startThread,
   continueThread,
+  publishThreadAtomic,
   calculateContentHash,
 } from '@vauban/web3-utils';
 import { uploadJSONToIPFSViaAPI } from '@/lib/ipfs-client';
+import { queryKeys } from '@/lib/query-keys';
 
 // =============================================================================
 // TYPES
@@ -34,6 +37,8 @@ export interface UsePostBastionResult {
   postThreadStart: (content: string) => Promise<string | null>;
   /** Continue an existing thread */
   postThreadContinue: (content: string, threadRootId: string) => Promise<string | null>;
+  /** Post an entire thread (all posts) in just 2 transactions using multicall */
+  postThread: (posts: string[]) => Promise<string | null>;
   /** Loading state */
   isPosting: boolean;
   /** Error message */
@@ -43,11 +48,42 @@ export interface UsePostBastionResult {
 }
 
 // =============================================================================
+// CONTENT PREPARATION
+// =============================================================================
+
+interface PrepareContentArgs {
+  content: string;
+  type: 'bastion' | 'reply' | 'thread';
+  author: string;
+  parentId?: string;
+  threadRootId?: string;
+  imageUrl?: string;
+}
+
+async function prepareContent(args: PrepareContentArgs): Promise<{ cid: string; hash: string }> {
+  const bastionData: BastionContent = {
+    content: args.content,
+    author: args.author,
+    createdAt: Date.now(),
+    type: args.type,
+    ...(args.parentId && { parentId: args.parentId }),
+    ...(args.threadRootId && { threadRootId: args.threadRootId }),
+    ...(args.imageUrl && { imageUrl: args.imageUrl }),
+  };
+
+  const cid = await uploadJSONToIPFSViaAPI(bastionData);
+  const hash = await calculateContentHash(args.content);
+
+  return { cid, hash };
+}
+
+// =============================================================================
 // HOOK
 // =============================================================================
 
 /**
- * Hook for posting bastions (short posts), replies, and threads
+ * Hook for posting bastions (short posts), replies, and threads.
+ * Uses React Query mutations for automatic cache invalidation on success.
  *
  * @example
  * ```tsx
@@ -71,52 +107,111 @@ export interface UsePostBastionResult {
  */
 export function usePostBastion(): UsePostBastionResult {
   const { account, address, isConnected } = useWallet();
-  const [isPosting, setIsPosting] = useState(false);
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 
   const clearError = useCallback(() => {
     setError(null);
   }, []);
 
-  /**
-   * Upload content to IPFS and get CID + hash
-   */
-  const prepareContent = useCallback(async (
-    content: string,
-    type: 'bastion' | 'reply' | 'thread',
-    parentId?: string,
-    threadRootId?: string,
-    imageUrl?: string
-  ): Promise<{ cid: string; hash: string } | null> => {
-    if (!address) {
-      setError('Wallet not connected');
-      return null;
-    }
+  const onMutationSuccess = useCallback(async () => {
+    // Clear the RPC proxy cache so subsequent reads return fresh blockchain state
+    await fetch('/api/rpc', { method: 'DELETE' }).catch(() => {});
+    void queryClient.invalidateQueries({ queryKey: queryKeys.posts.all });
+  }, [queryClient]);
 
-    const bastionData: BastionContent = {
-      content,
-      author: address,
-      createdAt: Date.now(),
-      type,
-      ...(parentId && { parentId }),
-      ...(threadRootId && { threadRootId }),
-      ...(imageUrl && { imageUrl }),
-    };
+  // --- Bastion mutation ---
+  const bastionMutation = useMutation({
+    mutationFn: async ({ content, imageUrl }: { content: string; imageUrl?: string }) => {
+      const prepared = await prepareContent({
+        content,
+        type: 'bastion',
+        author: address!,
+        imageUrl,
+      });
+      return publishTweet(account!, prepared.cid, prepared.cid, prepared.hash);
+    },
+    onSuccess: onMutationSuccess,
+  });
 
-    try {
-      // Upload to IPFS
-      const cid = await uploadJSONToIPFSViaAPI(bastionData);
+  // --- Reply mutation ---
+  const replyMutation = useMutation({
+    mutationFn: async ({ content, parentId }: { content: string; parentId: string }) => {
+      const prepared = await prepareContent({
+        content,
+        type: 'reply',
+        author: address!,
+        parentId,
+      });
+      return publishReply(account!, prepared.cid, prepared.cid, prepared.hash, parentId);
+    },
+    onSuccess: onMutationSuccess,
+  });
 
-      // Calculate content hash
-      const hash = await calculateContentHash(content);
+  // --- Thread start mutation ---
+  const threadStartMutation = useMutation({
+    mutationFn: async ({ content }: { content: string }) => {
+      const prepared = await prepareContent({
+        content,
+        type: 'thread',
+        author: address!,
+      });
+      return startThread(account!, prepared.cid, prepared.cid, prepared.hash);
+    },
+    onSuccess: onMutationSuccess,
+  });
 
-      return { cid, hash };
-    } catch (err) {
-      console.error('Error preparing content:', err);
-      setError('Failed to upload content');
-      return null;
-    }
-  }, [address]);
+  // --- Thread continue mutation ---
+  const threadContinueMutation = useMutation({
+    mutationFn: async ({ content, threadRootId }: { content: string; threadRootId: string }) => {
+      const prepared = await prepareContent({
+        content,
+        type: 'thread',
+        author: address!,
+        threadRootId,
+      });
+      return continueThread(account!, prepared.cid, prepared.cid, prepared.hash, threadRootId);
+    },
+    onSuccess: onMutationSuccess,
+  });
+
+  // --- Thread batch mutation (atomic multicall for ALL posts including root) ---
+  const threadBatchMutation = useMutation({
+    mutationFn: async ({ posts }: { posts: string[] }) => {
+      if (posts.length === 0) throw new Error('No posts provided');
+
+      // Prepare ALL posts in parallel (we don't know threadRootId yet, but publishThreadAtomic handles it)
+      const preparedPosts = await Promise.all(
+        posts.map(async (content) => {
+          const prepared = await prepareContent({
+            content,
+            type: 'thread',
+            author: address!,
+          });
+          return {
+            arweaveTxId: prepared.cid,
+            ipfsCid: prepared.cid,
+            contentHash: prepared.hash,
+          };
+        })
+      );
+
+      // Publish entire thread atomically in a single transaction
+      // This predicts the threadRootId and bundles all posts to avoid nonce issues
+      const rootId = await publishThreadAtomic(account!, preparedPosts);
+
+      return rootId;
+    },
+    onSuccess: onMutationSuccess,
+  });
+
+  // Aggregate isPosting from all mutations
+  const isPosting =
+    bastionMutation.isPending ||
+    replyMutation.isPending ||
+    threadStartMutation.isPending ||
+    threadContinueMutation.isPending ||
+    threadBatchMutation.isPending;
 
   /**
    * Post a new bastion (short post)
@@ -137,34 +232,17 @@ export function usePostBastion(): UsePostBastionResult {
       return null;
     }
 
-    setIsPosting(true);
     setError(null);
 
     try {
-      const prepared = await prepareContent(content, 'bastion', undefined, undefined, imageUrl);
-      if (!prepared) {
-        setIsPosting(false);
-        return null;
-      }
-
-      // For bastions, we don't use Arweave (too slow for short posts)
-      // Just use IPFS CID as both arweave_tx_id and ipfs_cid
-      const postId = await publishTweet(
-        account,
-        prepared.cid, // Using CID as arweave placeholder
-        prepared.cid,
-        prepared.hash
-      );
-
+      const postId = await bastionMutation.mutateAsync({ content, imageUrl });
       return postId;
     } catch (err) {
-      console.error('Error posting bastion:', err);
-      setError(err instanceof Error ? err.message : 'Failed to post');
+      const message = err instanceof Error ? err.message : 'Failed to post';
+      setError(message);
       return null;
-    } finally {
-      setIsPosting(false);
     }
-  }, [isConnected, account, prepareContent]);
+  }, [isConnected, account, bastionMutation]);
 
   /**
    * Reply to an existing post
@@ -188,33 +266,17 @@ export function usePostBastion(): UsePostBastionResult {
       return null;
     }
 
-    setIsPosting(true);
     setError(null);
 
     try {
-      const prepared = await prepareContent(content, 'reply', parentId);
-      if (!prepared) {
-        setIsPosting(false);
-        return null;
-      }
-
-      const postId = await publishReply(
-        account,
-        prepared.cid,
-        prepared.cid,
-        prepared.hash,
-        parentId
-      );
-
+      const postId = await replyMutation.mutateAsync({ content, parentId });
       return postId;
     } catch (err) {
-      console.error('Error posting reply:', err);
-      setError(err instanceof Error ? err.message : 'Failed to post reply');
+      const message = err instanceof Error ? err.message : 'Failed to post reply';
+      setError(message);
       return null;
-    } finally {
-      setIsPosting(false);
     }
-  }, [isConnected, account, prepareContent]);
+  }, [isConnected, account, replyMutation]);
 
   /**
    * Start a new thread
@@ -230,32 +292,17 @@ export function usePostBastion(): UsePostBastionResult {
       return null;
     }
 
-    setIsPosting(true);
     setError(null);
 
     try {
-      const prepared = await prepareContent(content, 'thread');
-      if (!prepared) {
-        setIsPosting(false);
-        return null;
-      }
-
-      const postId = await startThread(
-        account,
-        prepared.cid,
-        prepared.cid,
-        prepared.hash
-      );
-
+      const postId = await threadStartMutation.mutateAsync({ content });
       return postId;
     } catch (err) {
-      console.error('Error starting thread:', err);
-      setError(err instanceof Error ? err.message : 'Failed to start thread');
+      const message = err instanceof Error ? err.message : 'Failed to start thread';
+      setError(message);
       return null;
-    } finally {
-      setIsPosting(false);
     }
-  }, [isConnected, account, prepareContent]);
+  }, [isConnected, account, threadStartMutation]);
 
   /**
    * Continue an existing thread
@@ -274,39 +321,55 @@ export function usePostBastion(): UsePostBastionResult {
       return null;
     }
 
-    setIsPosting(true);
     setError(null);
 
     try {
-      const prepared = await prepareContent(content, 'thread', undefined, threadRootId);
-      if (!prepared) {
-        setIsPosting(false);
-        return null;
-      }
-
-      const postId = await continueThread(
-        account,
-        prepared.cid,
-        prepared.cid,
-        prepared.hash,
-        threadRootId
-      );
-
+      const postId = await threadContinueMutation.mutateAsync({ content, threadRootId });
       return postId;
     } catch (err) {
-      console.error('Error continuing thread:', err);
-      setError(err instanceof Error ? err.message : 'Failed to continue thread');
+      const message = err instanceof Error ? err.message : 'Failed to continue thread';
+      setError(message);
       return null;
-    } finally {
-      setIsPosting(false);
     }
-  }, [isConnected, account, prepareContent]);
+  }, [isConnected, account, threadContinueMutation]);
+
+  /**
+   * Post an entire thread using just 2 transactions:
+   * 1. First post creates the thread root
+   * 2. All remaining posts are batched in a single multicall transaction
+   *
+   * This is MUCH faster than posting each item sequentially and avoids nonce issues.
+   */
+  const postThread = useCallback(async (posts: string[]): Promise<string | null> => {
+    if (!isConnected || !account) {
+      setError('Please connect your wallet');
+      return null;
+    }
+
+    const validPosts = posts.filter((p) => p.trim());
+    if (validPosts.length === 0) {
+      setError('No valid posts provided');
+      return null;
+    }
+
+    setError(null);
+
+    try {
+      const rootId = await threadBatchMutation.mutateAsync({ posts: validPosts });
+      return rootId;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to post thread';
+      setError(message);
+      return null;
+    }
+  }, [isConnected, account, threadBatchMutation]);
 
   return {
     postBastion,
     postReply,
     postThreadStart,
     postThreadContinue,
+    postThread,
     isPosting,
     error,
     clearError,

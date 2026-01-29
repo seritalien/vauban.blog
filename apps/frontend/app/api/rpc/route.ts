@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 const MADARA_RPC = process.env.NEXT_PUBLIC_MADARA_RPC || 'http://localhost:9944';
 
 // In-memory cache for read-only RPC methods
-const CACHE_TTL_MS = 15_000;
+const CACHE_TTL_MS = 30_000;
 const MAX_CACHE_ENTRIES = 1000;
 
 const READ_ONLY_METHODS = new Set([
@@ -18,7 +18,8 @@ const READ_ONLY_METHODS = new Set([
   'starknet_getClassHashAt',
   'starknet_getBlockNumber',
   'starknet_chainId',
-  'starknet_getNonce',
+  // NOTE: starknet_getNonce is intentionally NOT cached — it changes after
+  // every transaction and a stale nonce causes "Invalid transaction nonce" errors.
   'starknet_blockNumber',
   'starknet_blockHashAndNumber',
 ]);
@@ -53,6 +54,15 @@ function setCache(key: string, data: unknown): void {
     }
   }
   cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL_MS });
+}
+
+/**
+ * Clear the RPC cache. Called after write transactions (post, thread, etc.)
+ * so subsequent reads return fresh blockchain state.
+ */
+export async function DELETE() {
+  cache.clear();
+  return NextResponse.json({ cleared: true });
 }
 
 export async function POST(request: NextRequest) {

@@ -8,6 +8,7 @@ import {
 } from '@/lib/api-keys';
 import { relayPublishPost, isRelayerConfigured } from '@/lib/relayer';
 import { calculateContentHash } from '@vauban/web3-utils';
+import { eventBus } from '@/lib/event-bus';
 
 // Request body schema
 const PublishRequestSchema = z.object({
@@ -165,6 +166,14 @@ export async function POST(request: NextRequest) {
       priceWei,
       validatedData.isEncrypted
     );
+
+    // Notify connected SSE clients that a new post was published
+    eventBus.emit('post:published', {
+      postId: txHash,
+      slug: validatedData.slug,
+      title: validatedData.title,
+      txHash,
+    });
 
     // Return success response
     return NextResponse.json(

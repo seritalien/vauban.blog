@@ -58,13 +58,6 @@ export const AISettingsPanel: FC<AISettingsPanelProps> = ({ isOpen, onClose }) =
     return unsubscribe;
   }, []);
 
-  // Fetch LocalAI models when panel opens or provider is LocalAI
-  useEffect(() => {
-    if (isOpen && config.textProvider === 'localai') {
-      fetchLocalAIModels();
-    }
-  }, [isOpen, config.textProvider]);
-
   const fetchLocalAIModels = useCallback(async (forceRefresh = false) => {
     setIsLoadingModels(true);
     try {
@@ -79,6 +72,13 @@ export const AISettingsPanel: FC<AISettingsPanelProps> = ({ isOpen, onClose }) =
       setIsLoadingModels(false);
     }
   }, []);
+
+  // Fetch LocalAI models when panel opens or provider is LocalAI
+  useEffect(() => {
+    if (isOpen && config.textProvider === 'localai') {
+      void fetchLocalAIModels();
+    }
+  }, [isOpen, config.textProvider, fetchLocalAIModels]);
 
   // Handle text provider change
   const handleTextProviderChange = useCallback((provider: TextProvider) => {

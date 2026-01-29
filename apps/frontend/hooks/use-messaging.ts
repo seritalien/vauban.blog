@@ -14,6 +14,8 @@ import {
   getKeyFingerprint,
 } from '@/lib/crypto';
 import { uploadJSONToIPFSViaAPI } from '@/lib/ipfs-client';
+import { publishPublicKey } from '@/lib/public-key-registry';
+import { saveProfile } from '@/lib/profiles';
 
 // =============================================================================
 // TYPES
@@ -135,6 +137,14 @@ export function useMessaging(): UseMessagingResult {
       // Export public key
       const exported = await exportPublicKey(keys.publicKey);
       setPublicKey(exported);
+
+      // Publish public key to IPFS and store CID in profile
+      try {
+        const keyCid = await publishPublicKey(address, exported);
+        saveProfile({ address, publicKeyCid: keyCid });
+      } catch (pubErr) {
+        console.error('Failed to publish public key to IPFS:', pubErr);
+      }
 
       // Get fingerprint
       const fp = await getKeyFingerprint(keys.publicKey);

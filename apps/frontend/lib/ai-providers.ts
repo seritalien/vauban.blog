@@ -101,7 +101,7 @@ export interface ImageProviderConfig {
 export const TEXT_PROVIDERS: Record<TextProvider, TextProviderConfig> = {
   gemini: {
     name: 'Google Gemini',
-    models: ['gemini-2.0-flash', 'gemini-1.5-flash'],
+    models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite'],
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
     latency: '~150ms',
     free: '1000 req/jour',
@@ -125,14 +125,13 @@ export const TEXT_PROVIDERS: Record<TextProvider, TextProviderConfig> = {
     // See: https://openrouter.ai/collections/free-models
     models: [
       // Google Gemini (best performance/speed, 100% free)
-      'google/gemini-2.0-flash-exp:free',      // Fastest, best quality, 1M context
+      'google/gemini-2.5-flash:free',      // Fastest, best quality, 1M context
       // Meta Llama (high quality)
       'meta-llama/llama-3.3-70b-instruct:free', // Excellent quality, good French
-      'meta-llama/llama-4-scout:free',          // Latest Llama 4
+      'google/gemini-2.5-flash-lite:free',       // Fastest, good for simple tasks
       // Mistral (good French support)
       'mistralai/mistral-small-3.1-24b-instruct:free',
-      // DeepSeek (good reasoning)
-      'deepseek/deepseek-chat-v3-0324:free',
+      // NOTE: deepseek/deepseek-chat:free removed — "No endpoints found" on OpenRouter
     ],
     baseUrl: 'https://openrouter.ai/api/v1',
     latency: '~100-500ms',
@@ -159,21 +158,20 @@ export const TEXT_PROVIDERS: Record<TextProvider, TextProviderConfig> = {
 // ALL models MUST end with :free to ensure zero cost
 export const OPENROUTER_MODEL_BY_TASK: Record<AITaskType, string> = {
   // Light tasks (tags, titles, excerpts): fastest model
-  light: 'google/gemini-2.0-flash-exp:free',
+  light: 'google/gemini-2.5-flash:free',
   // Medium tasks (improve, simplify, fix): balanced model
-  medium: 'google/gemini-2.0-flash-exp:free',
+  medium: 'google/gemini-2.5-flash:free',
   // Heavy tasks (expand, translate, continue): quality model with good French
-  heavy: 'google/gemini-2.0-flash-exp:free',
+  heavy: 'google/gemini-2.5-flash:free',
 };
 
 // Fallback free models if primary fails (in order of preference)
 // See: https://openrouter.ai/collections/free-models
 export const OPENROUTER_FREE_FALLBACKS: string[] = [
-  'google/gemini-2.0-flash-exp:free',      // Best free model, 1M context
+  'google/gemini-2.5-flash:free',           // Best free model, 1M context
+  'google/gemini-2.5-flash-lite:free',      // Fastest, simple tasks
   'meta-llama/llama-3.3-70b-instruct:free', // High quality, good French
-  'meta-llama/llama-4-scout:free',          // Latest Llama 4
-  'mistralai/mistral-small-3.1-24b-instruct:free', // Good French
-  'deepseek/deepseek-chat-v3-0324:free',    // Good reasoning
+  'mistralai/mistral-small-3.1-24b-instruct:free', // Good French support
 ];
 
 // Fallback chain when a provider fails

@@ -38,6 +38,7 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
 
   // Handle sentence change from TTS
   const handleSentenceChange = useCallback((index: number, _total: number) => {
+    void _total; // Unused but required by callback signature
     setCurrentSentenceIndex(index);
   }, []);
 
@@ -107,7 +108,7 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
         <div className="relative w-full h-96 rounded-lg overflow-hidden mb-8">
           <Image
             src={post.coverImage}
-            alt={post.title}
+            alt={post.title ?? ''}
             fill
             sizes="(max-width: 768px) 100vw, 896px"
             className="object-cover"
