@@ -288,8 +288,17 @@ export function useMessaging(): UseMessagingResult {
         JSON.stringify(conversationMessages)
       );
 
-      // TODO: Notify recipient via on-chain event or push notification
-      console.log('Message sent and stored on IPFS:', cid);
+      // Notify connected clients via SSE
+      await fetch('/api/events/emit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'message:received',
+          data: { conversationId: currentConversation.id, from: address },
+        }),
+      }).catch(() => {
+        // Notification emission is best-effort
+      });
     } catch (err) {
       console.error('Error sending message:', err);
       setError('Failed to send message');

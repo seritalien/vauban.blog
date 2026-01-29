@@ -12,6 +12,8 @@ import { ArticleCardSkeleton } from '@/components/ui/Skeleton';
 import AuthorBadge, { getAuthorBadges } from '@/components/ui/AuthorBadge';
 import { FollowButton, FollowStats } from '@/components/social';
 import { MessageUserButton } from '@/components/messaging';
+import { ReputationCard } from '@/components/reputation/ReputationCard';
+import { EarningsCard } from '@/components/treasury/EarningsCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -252,6 +254,12 @@ export default function AuthorProfilePage() {
             value={stats?.memberSince ? format(stats.memberSince, 'MMM yyyy') : '-'}
             label="Member Since"
           />
+        </div>
+
+        {/* Reputation & Earnings */}
+        <div className="grid gap-6 sm:grid-cols-2 mb-12">
+          <ReputationCard address={address} />
+          <EarningsCard address={address} />
         </div>
 
         {/* Featured Posts Section */}

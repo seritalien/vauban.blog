@@ -46,6 +46,29 @@ export function useEventStream(): void {
       }
     });
 
+    es.addEventListener('post:approved', () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.pendingReview });
+      queryClient.invalidateQueries({ queryKey: queryKeys.posts.all });
+    });
+
+    es.addEventListener('post:rejected', () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.pendingReview });
+    });
+
+    es.addEventListener('message:received', () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.messaging.conversations });
+      queryClient.invalidateQueries({ queryKey: queryKeys.messaging.unread });
+    });
+
+    es.addEventListener('user:banned', () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.bannedUsers });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.moderationReports });
+    });
+
+    es.addEventListener('user:unbanned', () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.bannedUsers });
+    });
+
     return () => {
       es.close();
       esRef.current = null;

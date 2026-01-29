@@ -204,3 +204,95 @@ describe('cache invalidation: different args produce different tuples', () => {
     expect(authorKey).not.toEqual(roleKey);
   });
 });
+
+// =============================================================================
+// Admin Keys
+// =============================================================================
+
+describe('queryKeys.admin', () => {
+  it('all returns ["admin"]', () => {
+    expect(queryKeys.admin.all).toEqual(['admin']);
+  });
+
+  it('pendingReview returns ["admin", "pendingReview"]', () => {
+    expect(queryKeys.admin.pendingReview).toEqual(['admin', 'pendingReview']);
+  });
+
+  it('moderationReports returns ["admin", "moderationReports"]', () => {
+    expect(queryKeys.admin.moderationReports).toEqual(['admin', 'moderationReports']);
+  });
+
+  it('bannedUsers returns ["admin", "bannedUsers"]', () => {
+    expect(queryKeys.admin.bannedUsers).toEqual(['admin', 'bannedUsers']);
+  });
+});
+
+// =============================================================================
+// Reputation Keys
+// =============================================================================
+
+describe('queryKeys.reputation', () => {
+  it('all returns ["reputation"]', () => {
+    expect(queryKeys.reputation.all).toEqual(['reputation']);
+  });
+
+  it('user(address) returns ["reputation", "user", address]', () => {
+    expect(queryKeys.reputation.user('0xabc')).toEqual([
+      'reputation',
+      'user',
+      '0xabc',
+    ]);
+  });
+
+  it('badges(address) returns ["reputation", "badges", address]', () => {
+    expect(queryKeys.reputation.badges('0xabc')).toEqual([
+      'reputation',
+      'badges',
+      '0xabc',
+    ]);
+  });
+});
+
+// =============================================================================
+// Treasury Keys
+// =============================================================================
+
+describe('queryKeys.treasury', () => {
+  it('all returns ["treasury"]', () => {
+    expect(queryKeys.treasury.all).toEqual(['treasury']);
+  });
+
+  it('earnings(address) returns ["treasury", "earnings", address]', () => {
+    expect(queryKeys.treasury.earnings('0xabc')).toEqual([
+      'treasury',
+      'earnings',
+      '0xabc',
+    ]);
+  });
+
+  it('config returns ["treasury", "config"]', () => {
+    expect(queryKeys.treasury.config).toEqual(['treasury', 'config']);
+  });
+
+  it('revenue returns ["treasury", "revenue"]', () => {
+    expect(queryKeys.treasury.revenue).toEqual(['treasury', 'revenue']);
+  });
+});
+
+// =============================================================================
+// Messaging Keys
+// =============================================================================
+
+describe('queryKeys.messaging', () => {
+  it('all returns ["messaging"]', () => {
+    expect(queryKeys.messaging.all).toEqual(['messaging']);
+  });
+
+  it('conversations returns ["messaging", "conversations"]', () => {
+    expect(queryKeys.messaging.conversations).toEqual(['messaging', 'conversations']);
+  });
+
+  it('unread returns ["messaging", "unread"]', () => {
+    expect(queryKeys.messaging.unread).toEqual(['messaging', 'unread']);
+  });
+});

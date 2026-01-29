@@ -120,4 +120,71 @@ describe('eventBus', () => {
     eventBus.emit('post:published', { postId: '99' });
     expect(handler).toHaveBeenCalledOnce();
   });
+
+  // --- New event types ---
+
+  it('delivers post:approved events', () => {
+    const handler = vi.fn();
+    eventBus.on('post:approved', handler);
+
+    const payload = { postId: '5' };
+    eventBus.emit('post:approved', payload);
+
+    expect(handler).toHaveBeenCalledOnce();
+    expect(handler).toHaveBeenCalledWith(payload);
+  });
+
+  it('delivers post:rejected events with optional reason', () => {
+    const handler = vi.fn();
+    eventBus.on('post:rejected', handler);
+
+    const payload = { postId: '6', reason: 'Off-topic' };
+    eventBus.emit('post:rejected', payload);
+
+    expect(handler).toHaveBeenCalledOnce();
+    expect(handler).toHaveBeenCalledWith(payload);
+  });
+
+  it('delivers post:rejected events without reason', () => {
+    const handler = vi.fn();
+    eventBus.on('post:rejected', handler);
+
+    eventBus.emit('post:rejected', { postId: '6' });
+
+    expect(handler).toHaveBeenCalledOnce();
+    expect(handler).toHaveBeenCalledWith({ postId: '6' });
+  });
+
+  it('delivers message:received events', () => {
+    const handler = vi.fn();
+    eventBus.on('message:received', handler);
+
+    const payload = { conversationId: 'conv-1', from: '0xabc' };
+    eventBus.emit('message:received', payload);
+
+    expect(handler).toHaveBeenCalledOnce();
+    expect(handler).toHaveBeenCalledWith(payload);
+  });
+
+  it('delivers user:banned events', () => {
+    const handler = vi.fn();
+    eventBus.on('user:banned', handler);
+
+    const payload = { address: '0xbad' };
+    eventBus.emit('user:banned', payload);
+
+    expect(handler).toHaveBeenCalledOnce();
+    expect(handler).toHaveBeenCalledWith(payload);
+  });
+
+  it('delivers user:unbanned events', () => {
+    const handler = vi.fn();
+    eventBus.on('user:unbanned', handler);
+
+    const payload = { address: '0xbad' };
+    eventBus.emit('user:unbanned', payload);
+
+    expect(handler).toHaveBeenCalledOnce();
+    expect(handler).toHaveBeenCalledWith(payload);
+  });
 });

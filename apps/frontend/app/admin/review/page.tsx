@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { useWallet } from '@/providers/wallet-provider';
 import { usePermissions } from '@/hooks/use-permissions';
 import { useRole } from '@/hooks/use-role';
+import { useAdminReview } from '@/hooks/use-admin-review';
 import { ROLES, ROLE_LABELS } from '@vauban/shared-types';
 import Link from 'next/link';
 import { format } from 'date-fns';
@@ -11,74 +12,32 @@ import { formatAddress } from '@/lib/profiles';
 
 export const dynamic = 'force-dynamic';
 
-// Mock data for pending posts (will be replaced with contract calls)
-interface PendingPost {
-  id: string;
-  title: string;
-  excerpt: string;
-  author: string;
-  submittedAt: Date;
-  tags: string[];
-  status: 'pending' | 'in_review';
-  reviewerId?: string;
-}
-
-// Mock pending posts for demonstration
-const MOCK_PENDING_POSTS: PendingPost[] = [
-  {
-    id: '1',
-    title: 'Introduction to Cairo Smart Contracts',
-    excerpt: 'Learn the fundamentals of writing smart contracts in Cairo for Starknet...',
-    author: '0x1234567890abcdef1234567890abcdef12345678',
-    submittedAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
-    tags: ['cairo', 'starknet', 'tutorial'],
-    status: 'pending',
-  },
-  {
-    id: '2',
-    title: 'Decentralized Identity on L3',
-    excerpt: 'Exploring how to implement decentralized identity solutions on Layer 3...',
-    author: '0xabcdef1234567890abcdef1234567890abcdef12',
-    submittedAt: new Date(Date.now() - 5 * 60 * 60 * 1000), // 5 hours ago
-    tags: ['identity', 'web3', 'l3'],
-    status: 'pending',
-  },
-  {
-    id: '3',
-    title: 'Understanding ZK Proofs',
-    excerpt: 'A deep dive into zero-knowledge proofs and their applications...',
-    author: '0x9876543210fedcba9876543210fedcba98765432',
-    submittedAt: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 day ago
-    tags: ['zk', 'cryptography', 'advanced'],
-    status: 'in_review',
-    reviewerId: '0x1111111111111111111111111111111111111111',
-  },
-];
-
-type FilterStatus = 'all' | 'pending' | 'in_review';
 
 export default function ReviewQueuePage() {
   const { isConnected } = useWallet();
   const { canApproveContent, isLoading: permissionsLoading } = usePermissions();
   const { roleLabel } = useRole();
+  const {
+    pendingPosts,
+    pendingCount,
+    isLoading: reviewLoading,
+    approvePost,
+    rejectPost,
+    isApproving,
+    isRejecting,
+  } = useAdminReview();
 
-  const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
   const [selectedPosts, setSelectedPosts] = useState<Set<string>>(new Set());
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
 
-  // In production, this would fetch from the contract
-  const pendingPosts = MOCK_PENDING_POSTS;
-
   const filteredPosts = useMemo(() => {
-    if (statusFilter === 'all') return pendingPosts;
-    return pendingPosts.filter((post) => post.status === statusFilter);
-  }, [pendingPosts, statusFilter]);
+    return pendingPosts;
+  }, [pendingPosts]);
 
   const stats = useMemo(() => ({
-    total: pendingPosts.length,
-    pending: pendingPosts.filter((p) => p.status === 'pending').length,
-    inReview: pendingPosts.filter((p) => p.status === 'in_review').length,
-  }), [pendingPosts]);
+    total: pendingCount,
+    pending: pendingPosts.length,
+  }), [pendingCount, pendingPosts]);
 
   const handleSelectAll = () => {
     if (selectedPosts.size === filteredPosts.length) {
@@ -101,10 +60,7 @@ export default function ReviewQueuePage() {
   const handleApprove = async (postId: string) => {
     setProcessingIds((prev) => new Set(prev).add(postId));
     try {
-      // TODO: Call contract to approve post
-      console.log('Approving post:', postId);
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate API call
-      // Remove from selected
+      await approvePost(postId);
       setSelectedPosts((prev) => {
         const newSet = new Set(prev);
         newSet.delete(postId);
@@ -122,9 +78,7 @@ export default function ReviewQueuePage() {
   const handleReject = async (postId: string) => {
     setProcessingIds((prev) => new Set(prev).add(postId));
     try {
-      // TODO: Call contract to reject post
-      console.log('Rejecting post:', postId);
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate API call
+      await rejectPost(postId);
       setSelectedPosts((prev) => {
         const newSet = new Set(prev);
         newSet.delete(postId);
@@ -203,7 +157,7 @@ export default function ReviewQueuePage() {
     );
   }
 
-  if (permissionsLoading) {
+  if (permissionsLoading || reviewLoading) {
     return (
       <div className="container mx-auto px-4 py-12">
         <h1 className="text-3xl font-bold mb-8">Review Queue</h1>
@@ -236,40 +190,15 @@ export default function ReviewQueuePage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid gap-4 sm:grid-cols-3 mb-8">
-          <button
-            onClick={() => setStatusFilter('all')}
-            className={`p-4 rounded-lg border transition-all ${
-              statusFilter === 'all'
-                ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
-                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-blue-200 dark:hover:border-blue-800'
-            }`}
-          >
+        <div className="grid gap-4 sm:grid-cols-2 mb-8">
+          <div className="p-4 rounded-lg border bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
             <div className="text-2xl font-bold text-gray-900 dark:text-white">{stats.total}</div>
             <div className="text-sm text-gray-500 dark:text-gray-400">Total Pending</div>
-          </button>
-          <button
-            onClick={() => setStatusFilter('pending')}
-            className={`p-4 rounded-lg border transition-all ${
-              statusFilter === 'pending'
-                ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
-                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-yellow-200 dark:hover:border-yellow-800'
-            }`}
-          >
+          </div>
+          <div className="p-4 rounded-lg border bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800">
             <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{stats.pending}</div>
-            <div className="text-sm text-gray-500 dark:text-gray-400">Awaiting Review</div>
-          </button>
-          <button
-            onClick={() => setStatusFilter('in_review')}
-            className={`p-4 rounded-lg border transition-all ${
-              statusFilter === 'in_review'
-                ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800'
-                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-purple-200 dark:hover:border-purple-800'
-            }`}
-          >
-            <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{stats.inReview}</div>
-            <div className="text-sm text-gray-500 dark:text-gray-400">In Review</div>
-          </button>
+            <div className="text-sm text-gray-500 dark:text-gray-400">Loaded for Review</div>
+          </div>
         </div>
 
         {/* Bulk Actions */}
@@ -352,11 +281,8 @@ export default function ReviewQueuePage() {
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1">
                           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
-                            {post.title}
+                            Post #{post.id}
                           </h3>
-                          <p className="text-gray-600 dark:text-gray-400 text-sm mb-3 line-clamp-2">
-                            {post.excerpt}
-                          </p>
 
                           <div className="flex flex-wrap items-center gap-3 text-sm">
                             <span className="text-gray-500 dark:text-gray-400">
@@ -364,28 +290,19 @@ export default function ReviewQueuePage() {
                             </span>
                             <span className="text-gray-300 dark:text-gray-600">|</span>
                             <span className="text-gray-500 dark:text-gray-400">
-                              {format(post.submittedAt, 'MMM d, yyyy h:mm a')}
+                              {format(new Date(post.createdAt * 1000), 'MMM d, yyyy h:mm a')}
                             </span>
                             <span className="text-gray-300 dark:text-gray-600">|</span>
-                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                              post.status === 'pending'
-                                ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300'
-                                : 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
-                            }`}>
-                              {post.status === 'pending' ? 'Pending' : 'In Review'}
+                            <span className="px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300">
+                              Pending Review
                             </span>
                           </div>
 
-                          <div className="flex flex-wrap gap-2 mt-3">
-                            {post.tags.map((tag) => (
-                              <span
-                                key={tag}
-                                className="px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded text-xs"
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
+                          {post.ipfsCid && (
+                            <div className="mt-2 text-xs text-gray-400 font-mono truncate">
+                              IPFS: {post.ipfsCid}
+                            </div>
+                          )}
                         </div>
 
                         {/* Actions */}
@@ -398,17 +315,17 @@ export default function ReviewQueuePage() {
                           </Link>
                           <button
                             onClick={() => handleApprove(post.id)}
-                            disabled={processingIds.has(post.id)}
+                            disabled={processingIds.has(post.id) || isApproving}
                             className="px-4 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            {processingIds.has(post.id) ? 'Processing...' : 'Approve'}
+                            {processingIds.has(post.id) && isApproving ? 'Approving...' : 'Approve'}
                           </button>
                           <button
                             onClick={() => handleReject(post.id)}
-                            disabled={processingIds.has(post.id)}
+                            disabled={processingIds.has(post.id) || isRejecting}
                             className="px-4 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            Reject
+                            {processingIds.has(post.id) && isRejecting ? 'Rejecting...' : 'Reject'}
                           </button>
                         </div>
                       </div>

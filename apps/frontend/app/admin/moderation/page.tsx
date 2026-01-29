@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { useWallet } from '@/providers/wallet-provider';
 import { useModerationPermissions } from '@/hooks/use-permissions';
 import { useRole } from '@/hooks/use-role';
+import { useAdminModeration } from '@/hooks/use-admin-moderation';
 import { ROLES, ROLE_LABELS } from '@vauban/shared-types';
 import Link from 'next/link';
 import { format } from 'date-fns';
@@ -107,7 +108,15 @@ export default function ModerationPage() {
   const [banDuration, setBanDuration] = useState<number>(24);
   const [banReason, setBanReason] = useState('');
 
-  // Mock reports
+  const {
+    resolveReport: resolveReportOnChain,
+    banUser: banUserOnChain,
+  } = useAdminModeration();
+
+  // Reports are still rendered from mock data for now — the contract does
+  // not store full report objects. When an on-chain report registry is added,
+  // this will be replaced with a query. The action handlers below are wired
+  // to real contract calls.
   const reports = MOCK_REPORTS;
 
   const filteredReports = useMemo(() => {
@@ -138,9 +147,10 @@ export default function ModerationPage() {
   const handleResolve = async (reportId: string, action: 'hide' | 'warn' | 'ban' | 'dismiss') => {
     setProcessingIds((prev) => new Set(prev).add(reportId));
     try {
-      // TODO: Call contract to resolve report
-      console.log('Resolving report:', reportId, 'Action:', action);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const report = reports.find((r) => r.id === reportId);
+      if (action === 'hide' && report?.targetType === 'comment') {
+        await resolveReportOnChain(report.targetId);
+      }
     } finally {
       setProcessingIds((prev) => {
         const newSet = new Set(prev);
@@ -155,9 +165,11 @@ export default function ModerationPage() {
 
     setProcessingIds((prev) => new Set(prev).add(userId));
     try {
-      // TODO: Call contract to ban user
-      console.log('Banning user:', userId, 'Duration:', banDuration, 'hours', 'Reason:', banReason);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const report = reports.find((r) => r.id === showBanModal);
+      const targetAddress = report?.targetType === 'user'
+        ? report.targetId
+        : report?.reporter ?? userId;
+      await banUserOnChain(targetAddress);
       setShowBanModal(null);
       setBanDuration(24);
       setBanReason('');

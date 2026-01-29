@@ -41,4 +41,26 @@ export const queryKeys = {
     all: ['sessionKey'] as const,
     status: (address: string) => ['sessionKey', 'status', address] as const,
   },
+  admin: {
+    all: ['admin'] as const,
+    pendingReview: ['admin', 'pendingReview'] as const,
+    moderationReports: ['admin', 'moderationReports'] as const,
+    bannedUsers: ['admin', 'bannedUsers'] as const,
+  },
+  reputation: {
+    all: ['reputation'] as const,
+    user: (address: string) => ['reputation', 'user', address] as const,
+    badges: (address: string) => ['reputation', 'badges', address] as const,
+  },
+  treasury: {
+    all: ['treasury'] as const,
+    earnings: (address: string) => ['treasury', 'earnings', address] as const,
+    config: ['treasury', 'config'] as const,
+    revenue: ['treasury', 'revenue'] as const,
+  },
+  messaging: {
+    all: ['messaging'] as const,
+    conversations: ['messaging', 'conversations'] as const,
+    unread: ['messaging', 'unread'] as const,
+  },
 } as const;

@@ -28,7 +28,16 @@ export function GET(request: Request): Response {
       }
 
       // --- Event listeners ---
-      const eventNames: EventName[] = ['post:published', 'post:scheduled', 'comment:added'];
+      const eventNames: EventName[] = [
+        'post:published',
+        'post:scheduled',
+        'comment:added',
+        'post:approved',
+        'post:rejected',
+        'message:received',
+        'user:banned',
+        'user:unbanned',
+      ];
 
       const handlers = eventNames.map(<K extends EventName>(name: K) => {
         const handler = (payload: EventPayloads[K]) => send(name, payload);

@@ -13,6 +13,8 @@ import socialAbi from './abis/social.json';
 import roleRegistryAbi from './abis/role_registry.json';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import reputationAbi from './abis/reputation.json';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+import treasuryAbi from './abis/treasury.json';
 
 // ============================================================================
 // PROVIDER CONFIGURATION
@@ -60,6 +62,7 @@ let contractAddresses: {
   sessionKeyManager?: string;
   roleRegistry?: string;
   reputation?: string;
+  treasury?: string;
 } = {};
 
 /**
@@ -72,6 +75,7 @@ export function setContractAddresses(addresses: {
   sessionKeyManager?: string;
   roleRegistry?: string;
   reputation?: string;
+  treasury?: string;
 }) {
   contractAddresses = { ...contractAddresses, ...addresses };
 }
@@ -104,6 +108,14 @@ export function getSessionKeyManagerAddress(): string {
   const address = contractAddresses.sessionKeyManager || process.env.NEXT_PUBLIC_SESSION_KEY_MANAGER_ADDRESS;
   if (!address) {
     throw new Error('Session Key Manager address not set. Call setContractAddresses() first.');
+  }
+  return address;
+}
+
+export function getTreasuryAddress(): string {
+  const address = contractAddresses.treasury || process.env.NEXT_PUBLIC_TREASURY_ADDRESS;
+  if (!address) {
+    throw new Error('Treasury address not set. Call setContractAddresses() first.');
   }
   return address;
 }
@@ -1904,5 +1916,369 @@ export async function getReputationStats(): Promise<{ totalUsers: number; totalP
   } catch (error) {
     console.error('Error getting reputation stats:', error);
     return { totalUsers: 0, totalPointsDistributed: 0n };
+  }
+}
+
+// ============================================================================
+// ADMIN / REVIEW FUNCTIONS (BlogRegistry)
+// ============================================================================
+
+// Post status constants matching the Cairo contract
+export const POST_STATUS_DRAFT = 0;
+export const POST_STATUS_PENDING_REVIEW = 1;
+export const POST_STATUS_PUBLISHED = 2;
+export const POST_STATUS_REJECTED = 3;
+export const POST_STATUS_ARCHIVED = 4;
+
+/**
+ * Approve a pending post (editor+ only)
+ */
+export async function approvePost(
+  account: AccountLike,
+  postId: string
+): Promise<string> {
+  const address = getBlogRegistryAddress();
+
+  try {
+    const contract = new Contract(blogRegistryAbi as any, address, account);
+    const result = await contract.approve_post(postId);
+    await account.waitForTransaction(result.transaction_hash);
+    return result.transaction_hash;
+  } catch (error) {
+    throw new Error(`Failed to approve post: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Reject a pending post (editor+ only)
+ */
+export async function rejectPost(
+  account: AccountLike,
+  postId: string
+): Promise<string> {
+  const address = getBlogRegistryAddress();
+
+  try {
+    const contract = new Contract(blogRegistryAbi as any, address, account);
+    const result = await contract.reject_post(postId);
+    await account.waitForTransaction(result.transaction_hash);
+    return result.transaction_hash;
+  } catch (error) {
+    throw new Error(`Failed to reject post: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Get posts by status (draft/pending/published/rejected/archived)
+ */
+export async function getPostsByStatus(
+  status: number,
+  limit: number = 10,
+  offset: number = 0
+): Promise<PostMetadata[]> {
+  const provider = getProvider();
+  const address = getBlogRegistryAddress();
+
+  try {
+    const contract = new Contract(blogRegistryAbi as any, address, provider);
+    const result = await contract.get_posts_by_status(status, limit, offset);
+
+    return result.map((post: any) => {
+      const arweave1 = safeDecodeShortString(post.arweave_tx_id_1);
+      const arweave2 = safeDecodeShortString(post.arweave_tx_id_2);
+      const ipfs1 = safeDecodeShortString(post.ipfs_cid_1);
+      const ipfs2 = safeDecodeShortString(post.ipfs_cid_2);
+
+      return {
+        id: post.id.toString(),
+        author: '0x' + BigInt(post.author).toString(16),
+        arweaveTxId: joinFelt252Parts(arweave1, arweave2),
+        ipfsCid: joinFelt252Parts(ipfs1, ipfs2),
+        contentHash: post.content_hash.toString(),
+        price: post.price.toString(),
+        isEncrypted: post.is_encrypted,
+        createdAt: Number(post.created_at),
+        updatedAt: Number(post.updated_at),
+        isDeleted: post.is_deleted || false,
+        postType: Number(post.post_type ?? 2),
+        parentId: post.parent_id && Number(post.parent_id) > 0 ? post.parent_id.toString() : undefined,
+        threadRootId: post.thread_root_id && Number(post.thread_root_id) > 0 ? post.thread_root_id.toString() : undefined,
+        isPinned: post.is_pinned || false,
+      };
+    });
+  } catch (error) {
+    throw new Error(`Failed to get posts by status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Get count of posts pending review
+ */
+export async function getPendingReviewCount(): Promise<number> {
+  const provider = getProvider();
+  const address = getBlogRegistryAddress();
+
+  try {
+    const contract = new Contract(blogRegistryAbi as any, address, provider);
+    const result = await contract.get_pending_review_count();
+    return Number(result);
+  } catch (error) {
+    throw new Error(`Failed to get pending review count: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+// ============================================================================
+// MODERATION FUNCTIONS (Social)
+// ============================================================================
+
+/**
+ * Delete a comment (moderator+ only)
+ */
+export async function deleteComment(
+  account: AccountLike,
+  commentId: string
+): Promise<string> {
+  const address = getSocialAddress();
+
+  try {
+    const contract = new Contract(socialAbi as any, address, account);
+    const result = await contract.delete_comment(commentId);
+    await account.waitForTransaction(result.transaction_hash);
+    return result.transaction_hash;
+  } catch (error) {
+    throw new Error(`Failed to delete comment: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Ban a user (moderator+ only)
+ */
+export async function banUser(
+  account: AccountLike,
+  userAddress: string
+): Promise<string> {
+  const address = getSocialAddress();
+
+  try {
+    const contract = new Contract(socialAbi as any, address, account);
+    const result = await contract.ban_user(userAddress);
+    await account.waitForTransaction(result.transaction_hash);
+    return result.transaction_hash;
+  } catch (error) {
+    throw new Error(`Failed to ban user: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Unban a user (moderator+ only)
+ */
+export async function unbanUser(
+  account: AccountLike,
+  userAddress: string
+): Promise<string> {
+  const address = getSocialAddress();
+
+  try {
+    const contract = new Contract(socialAbi as any, address, account);
+    const result = await contract.unban_user(userAddress);
+    await account.waitForTransaction(result.transaction_hash);
+    return result.transaction_hash;
+  } catch (error) {
+    throw new Error(`Failed to unban user: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Report a comment
+ */
+export async function reportComment(
+  account: AccountLike,
+  commentId: string
+): Promise<string> {
+  const address = getSocialAddress();
+
+  try {
+    const contract = new Contract(socialAbi as any, address, account);
+    const result = await contract.report_comment(commentId);
+    await account.waitForTransaction(result.transaction_hash);
+    return result.transaction_hash;
+  } catch (error) {
+    throw new Error(`Failed to report comment: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Get report count for a comment
+ */
+export async function getReportCount(commentId: string): Promise<number> {
+  const provider = getProvider();
+  const address = getSocialAddress();
+
+  try {
+    const contract = new Contract(socialAbi as any, address, provider);
+    const result = await contract.get_report_count(commentId);
+    return Number(result);
+  } catch (error) {
+    throw new Error(`Failed to get report count: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Check if a user is banned
+ */
+export async function isBanned(userAddress: string): Promise<boolean> {
+  const provider = getProvider();
+  const address = getSocialAddress();
+
+  try {
+    const contract = new Contract(socialAbi as any, address, provider);
+    const result = await contract.is_banned(userAddress);
+    return Boolean(result);
+  } catch (error) {
+    throw new Error(`Failed to check ban status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+// ============================================================================
+// TREASURY FUNCTIONS
+// ============================================================================
+
+export { treasuryAbi };
+
+export interface Earnings {
+  totalEarned: bigint;
+  totalWithdrawn: bigint;
+  pending: bigint;
+}
+
+export interface PaymentRecord {
+  id: string;
+  postId: string;
+  payer: string;
+  amount: bigint;
+  authorShare: bigint;
+  platformShare: bigint;
+  referrerShare: bigint;
+  referrer: string;
+  timestamp: number;
+}
+
+export interface RevenueConfig {
+  platformFeeBps: number;
+  referralFeeBps: number;
+  minWithdrawal: bigint;
+}
+
+/**
+ * Get earnings for a user
+ */
+export async function getEarnings(userAddress: string): Promise<Earnings> {
+  const provider = getProvider();
+  const address = getTreasuryAddress();
+
+  try {
+    const contract = new Contract(treasuryAbi as any, address, provider);
+    const result = await contract.get_earnings(userAddress);
+    return {
+      totalEarned: BigInt(result.total_earned.toString()),
+      totalWithdrawn: BigInt(result.total_withdrawn.toString()),
+      pending: BigInt(result.pending.toString()),
+    };
+  } catch (error) {
+    throw new Error(`Failed to get earnings: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Get a payment record by ID
+ */
+export async function getPaymentRecord(paymentId: string): Promise<PaymentRecord> {
+  const provider = getProvider();
+  const address = getTreasuryAddress();
+
+  try {
+    const contract = new Contract(treasuryAbi as any, address, provider);
+    const result = await contract.get_payment(paymentId);
+    return {
+      id: result.id.toString(),
+      postId: result.post_id.toString(),
+      payer: '0x' + BigInt(result.payer).toString(16),
+      amount: BigInt(result.amount.toString()),
+      authorShare: BigInt(result.author_share.toString()),
+      platformShare: BigInt(result.platform_share.toString()),
+      referrerShare: BigInt(result.referrer_share.toString()),
+      referrer: '0x' + BigInt(result.referrer).toString(16),
+      timestamp: Number(result.timestamp),
+    };
+  } catch (error) {
+    throw new Error(`Failed to get payment record: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Get revenue configuration
+ */
+export async function getRevenueConfig(): Promise<RevenueConfig> {
+  const provider = getProvider();
+  const address = getTreasuryAddress();
+
+  try {
+    const contract = new Contract(treasuryAbi as any, address, provider);
+    const result = await contract.get_config();
+    return {
+      platformFeeBps: Number(result.platform_fee_bps),
+      referralFeeBps: Number(result.referral_fee_bps),
+      minWithdrawal: BigInt(result.min_withdrawal.toString()),
+    };
+  } catch (error) {
+    throw new Error(`Failed to get revenue config: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Withdraw pending earnings
+ */
+export async function withdrawEarnings(account: AccountLike): Promise<string> {
+  const address = getTreasuryAddress();
+
+  try {
+    const contract = new Contract(treasuryAbi as any, address, account);
+    const result = await contract.withdraw_earnings();
+    await account.waitForTransaction(result.transaction_hash);
+    return result.transaction_hash;
+  } catch (error) {
+    throw new Error(`Failed to withdraw earnings: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Get total volume traded on the platform
+ */
+export async function getTotalRevenue(): Promise<bigint> {
+  const provider = getProvider();
+  const address = getTreasuryAddress();
+
+  try {
+    const contract = new Contract(treasuryAbi as any, address, provider);
+    const result = await contract.get_total_volume();
+    return BigInt(result.toString());
+  } catch (error) {
+    throw new Error(`Failed to get total revenue: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Get total amount distributed to creators
+ */
+export async function getCreatorEarnings(): Promise<bigint> {
+  const provider = getProvider();
+  const address = getTreasuryAddress();
+
+  try {
+    const contract = new Contract(treasuryAbi as any, address, provider);
+    const result = await contract.get_total_distributed_to_creators();
+    return BigInt(result.toString());
+  } catch (error) {
+    throw new Error(`Failed to get creator earnings: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

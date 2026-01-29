@@ -7,6 +7,7 @@ import { getProfile, formatAddress, getDisplayName, toAddressString } from '@/li
 import { type AuthorProfile } from '@vauban/shared-types';
 import { getPostLikes, getCommentsForPost } from '@vauban/web3-utils';
 import AuthorBadge, { getAuthorBadges } from '@/components/ui/AuthorBadge';
+import { useReputation } from '@/hooks/use-reputation';
 
 export const dynamic = 'force-dynamic';
 
@@ -306,6 +307,7 @@ function AuthorCard({ author, isLoadingEngagement }: AuthorCardProps) {
     author.profile !== null,
     author.firstPostDate ?? undefined
   );
+  const { level } = useReputation(author.address);
 
   return (
     <Link
@@ -326,9 +328,16 @@ function AuthorCard({ author, isLoadingEngagement }: AuthorCardProps) {
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <h3 className="font-bold text-lg truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-            {displayName}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="font-bold text-lg truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+              {displayName}
+            </h3>
+            {level > 0 && (
+              <span className="flex-shrink-0 text-xs px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-full font-medium">
+                Lv.{level}
+              </span>
+            )}
+          </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">
             {shortAddress}
           </p>

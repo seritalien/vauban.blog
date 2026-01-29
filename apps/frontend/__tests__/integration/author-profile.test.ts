@@ -93,6 +93,18 @@ vi.mock('@/components/ui/Skeleton', () => ({
   ArticleCardSkeleton: () => React.createElement('div', { 'data-testid': 'article-skeleton' }, 'Loading...'),
 }));
 
+vi.mock('@/components/reputation/ReputationCard', () => ({
+  ReputationCard: ({ address }: { address: string }) => (
+    React.createElement('div', { 'data-testid': 'reputation-card', 'data-address': address })
+  ),
+}));
+
+vi.mock('@/components/treasury/EarningsCard', () => ({
+  EarningsCard: ({ address }: { address: string }) => (
+    React.createElement('div', { 'data-testid': 'earnings-card', 'data-address': address })
+  ),
+}));
+
 vi.mock('@/components/ui/AuthorBadge', () => ({
   default: ({ type, size }: { type: string; size?: string }) => (
     React.createElement('span', { 'data-testid': `badge-${type}`, 'data-size': size }, type)

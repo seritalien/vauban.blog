@@ -11,6 +11,11 @@ export interface EventPayloads {
   'post:published': { postId: string; slug?: string; title?: string; txHash?: string };
   'post:scheduled': { postId: string; scheduledAt: string };
   'comment:added': { postId: string; commentId?: string; author?: string };
+  'post:approved': { postId: string };
+  'post:rejected': { postId: string; reason?: string };
+  'message:received': { conversationId: string; from: string };
+  'user:banned': { address: string };
+  'user:unbanned': { address: string };
 }
 
 export type EventName = keyof EventPayloads;
