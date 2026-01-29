@@ -227,7 +227,9 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
   for (let i = 0; i < binary.length; i++) {
     bytes[i] = binary.charCodeAt(i);
   }
-  return bytes.buffer;
+  // Return a clean ArrayBuffer slice — bytes.buffer may be a shared backing
+  // buffer larger than the view, which some SubtleCrypto implementations reject.
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
 }
 
 /**

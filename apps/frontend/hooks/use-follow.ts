@@ -202,8 +202,11 @@ export function useFollow(targetAddress: string | null | undefined): UseFollowRe
         queryKeys.follow.stats(targetAddress),
         (old) => old ? { ...old, followerCount: old.followerCount + 1 } : { followerCount: 1, followingCount: 0 },
       );
-      queryClient.invalidateQueries({ queryKey: queryKeys.follow.stats(targetAddress) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.follow.isFollowing(address ?? '', targetAddress) });
+      // Refetch in background after a tick to avoid overwriting the optimistic update
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.follow.stats(targetAddress) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.follow.isFollowing(address ?? '', targetAddress) });
+      }, 100);
 
       return true;
     } catch (err) {
@@ -242,8 +245,11 @@ export function useFollow(targetAddress: string | null | undefined): UseFollowRe
         queryKeys.follow.stats(targetAddress),
         (old) => old ? { ...old, followerCount: Math.max(0, old.followerCount - 1) } : { followerCount: 0, followingCount: 0 },
       );
-      queryClient.invalidateQueries({ queryKey: queryKeys.follow.stats(targetAddress) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.follow.isFollowing(address ?? '', targetAddress) });
+      // Refetch in background after a tick to avoid overwriting the optimistic update
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.follow.stats(targetAddress) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.follow.isFollowing(address ?? '', targetAddress) });
+      }, 100);
 
       return true;
     } catch (err) {
