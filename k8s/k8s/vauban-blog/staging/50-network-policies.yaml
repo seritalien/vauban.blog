@@ -9,30 +9,6 @@ spec:
     - Ingress
     - Egress
 ---
-# Allow Traefik to reach cert-manager ACME HTTP-01 solver pods
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: acme-solver
-  namespace: vauban-blog-staging
-spec:
-  podSelector:
-    matchLabels:
-      acme.cert-manager.io/http01-solver: "true"
-  policyTypes:
-    - Ingress
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: kube-system
-          podSelector:
-            matchLabels:
-              app.kubernetes.io/name: traefik
-      ports:
-        - protocol: TCP
-          port: 8089
----
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
