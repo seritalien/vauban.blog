@@ -29,6 +29,7 @@ spec:
         prometheus.io/port: "3000"
         prometheus.io/path: "/api/health"
     spec:
+      priorityClassName: staging
       terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
@@ -38,7 +39,7 @@ spec:
         - name: ghcr-secret
       containers:
         - name: frontend
-          image: ghcr.io/vauban/blog-frontend:staging
+          image: ghcr.io/seritalien/vauban.blog/frontend:master
           imagePullPolicy: Always
           ports:
             - name: http

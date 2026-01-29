@@ -6,6 +6,9 @@ metadata:
     app.kubernetes.io/name: vauban-blog
     app.kubernetes.io/part-of: vauban-blog
     environment: staging
+    layer: application
+    managed-by: kubectl
+    name: vauban-blog-staging
 ---
 # ResourceQuota aligned with existing vauban-staging patterns
 apiVersion: v1
@@ -15,14 +18,14 @@ metadata:
   namespace: vauban-blog-staging
 spec:
   hard:
-    requests.cpu: "4"
-    requests.memory: 16Gi
-    limits.cpu: "8"
-    limits.memory: 24Gi
-    requests.storage: 300Gi
-    persistentvolumeclaims: "25"
-    pods: "30"
-    services: "15"
+    requests.cpu: "1"
+    requests.memory: 2Gi
+    limits.cpu: "2"
+    limits.memory: 4Gi
+    requests.storage: 30Gi
+    persistentvolumeclaims: "5"
+    pods: "10"
+    services: "5"
 ---
 # LimitRange aligned with existing vauban-staging patterns
 apiVersion: v1
@@ -37,8 +40,8 @@ spec:
         cpu: 10m
         memory: 16Mi
       max:
-        cpu: 2
-        memory: 4Gi
+        cpu: "1"
+        memory: 2Gi
       default:
         cpu: 250m
         memory: 256Mi

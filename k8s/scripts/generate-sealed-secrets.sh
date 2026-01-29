@@ -55,7 +55,7 @@ fi
 
 # Create app secrets
 echo "Sealing application secrets..."
-cat <<EOF | kubeseal --format yaml --namespace "$NAMESPACE" > /tmp/vauban-app-sealed.yaml
+cat <<EOF | kubeseal --format yaml --namespace "$NAMESPACE" --controller-namespace sealed-secrets > /tmp/vauban-app-sealed.yaml
 apiVersion: v1
 kind: Secret
 metadata:
@@ -72,7 +72,7 @@ EOF
 if [[ -n "$GHCR_USER" && -n "$GHCR_TOKEN" ]]; then
     echo "Sealing GHCR pull secret..."
     DOCKER_CONFIG=$(echo -n "{\"auths\":{\"ghcr.io\":{\"username\":\"$GHCR_USER\",\"password\":\"$GHCR_TOKEN\"}}}" | base64 -w0)
-    cat <<EOF | kubeseal --format yaml --namespace "$NAMESPACE" > /tmp/vauban-ghcr-sealed.yaml
+    cat <<EOF | kubeseal --format yaml --namespace "$NAMESPACE" --controller-namespace sealed-secrets > /tmp/vauban-ghcr-sealed.yaml
 apiVersion: v1
 kind: Secret
 metadata:

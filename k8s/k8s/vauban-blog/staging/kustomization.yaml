@@ -23,8 +23,8 @@ resources:
   - 60-pod-disruption-budgets.yaml
 
 images:
-  - name: ghcr.io/vauban/blog-frontend
-    newTag: staging
+  - name: ghcr.io/seritalien/vauban.blog/frontend
+    newTag: master
 
 commonLabels:
   app.kubernetes.io/part-of: vauban-blog
