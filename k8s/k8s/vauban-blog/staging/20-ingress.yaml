@@ -16,10 +16,10 @@ metadata:
 spec:
   tls:
     - hosts:
-        - blog.staging.vauban.tech
+        - bastion.staging.vauban.tech
       secretName: vauban-blog-staging-tls
   rules:
-    - host: blog.staging.vauban.tech
+    - host: bastion.staging.vauban.tech
       http:
         paths:
           - path: /

@@ -47,4 +47,4 @@ spec:
   # Notifications
   info:
     - name: url
-      value: https://blog.staging.vauban.tech
+      value: https://bastion.staging.vauban.tech

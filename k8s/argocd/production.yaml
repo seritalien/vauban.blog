@@ -51,6 +51,6 @@ spec:
   # Production info
   info:
     - name: url
-      value: https://blog.vauban.tech
+      value: https://bastion.vauban.tech
     - name: preview-url
-      value: https://preview.blog.vauban.tech
+      value: https://preview.bastion.vauban.tech

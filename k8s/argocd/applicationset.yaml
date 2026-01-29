@@ -13,12 +13,12 @@ spec:
             namespace: vauban-blog-staging
             branch: develop
             sync: auto
-            domain: blog.staging.vauban.tech
+            domain: bastion.staging.vauban.tech
           - env: production
             namespace: vauban-blog
             branch: main
             sync: manual
-            domain: blog.vauban.tech
+            domain: bastion.vauban.tech
 
   template:
     metadata:

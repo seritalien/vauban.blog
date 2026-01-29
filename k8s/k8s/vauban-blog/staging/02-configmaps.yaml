@@ -6,7 +6,7 @@ metadata:
 data:
   # Application
   NODE_ENV: "production"
-  NEXT_PUBLIC_BASE_URL: "https://blog.staging.vauban.tech"
+  NEXT_PUBLIC_BASE_URL: "https://bastion.staging.vauban.tech"
 
   # Blockchain (Madara L3 or use existing Starknet)
   NEXT_PUBLIC_MADARA_RPC: "https://sepolia.rpc.vauban.tech"

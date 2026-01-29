@@ -15,8 +15,8 @@ This directory contains Kubernetes manifests for deploying Vauban Blog to a k3s 
 │                         ▼                                            │
 │  ┌──────────────────────────────────────────────────────────────┐   │
 │  │                    Traefik Ingress                            │   │
-│  │              blog.vauban.tech (active)                        │   │
-│  │         preview.blog.vauban.tech (preview)                    │   │
+│  │              bastion.vauban.tech (active)                        │   │
+│  │         preview.bastion.vauban.tech (preview)                    │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 │                                                                      │
 │  Supporting Services:                                                │
@@ -32,7 +32,7 @@ This directory contains Kubernetes manifests for deploying Vauban Blog to a k3s 
 │  └────────┬─────────┘                                               │
 │           │                                                          │
 │  ┌────────▼────────────────────────────────────────────────────┐    │
-│  │              blog.staging.vauban.tech                        │    │
+│  │              bastion.staging.vauban.tech                        │    │
 │  └──────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -108,7 +108,7 @@ kubectl argo rollouts undo frontend -n vauban-blog
 
 | Environment | URL |
 |-------------|-----|
-| Staging | https://blog.staging.vauban.tech |
-| Production | https://blog.vauban.tech |
-| Preview | https://preview.blog.vauban.tech |
+| Staging | https://bastion.staging.vauban.tech |
+| Production | https://bastion.vauban.tech |
+| Preview | https://preview.bastion.vauban.tech |
 | IPFS Gateway | https://ipfs.vauban.tech |

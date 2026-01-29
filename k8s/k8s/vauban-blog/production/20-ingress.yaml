@@ -15,10 +15,10 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - blog.vauban.tech
+        - bastion.vauban.tech
       secretName: vauban-blog-tls
   rules:
-    - host: blog.vauban.tech
+    - host: bastion.vauban.tech
       http:
         paths:
           - path: /
@@ -46,10 +46,10 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - preview.blog.vauban.tech
+        - preview.bastion.vauban.tech
       secretName: vauban-blog-preview-tls
   rules:
-    - host: preview.blog.vauban.tech
+    - host: preview.bastion.vauban.tech
       http:
         paths:
           - path: /
