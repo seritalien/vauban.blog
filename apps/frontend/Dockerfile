@@ -7,7 +7,7 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # Copy workspace files
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.json ./
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/web3-utils/package.json ./packages/web3-utils/
 COPY apps/frontend/package.json ./apps/frontend/
