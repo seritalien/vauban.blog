@@ -24,7 +24,7 @@ resources:
 
 images:
   - name: ghcr.io/seritalien/vauban.blog/frontend
-    newTag: master
+    newTag: main
 
 commonLabels:
   app.kubernetes.io/part-of: vauban-blog

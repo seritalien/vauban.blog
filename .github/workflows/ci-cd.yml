@@ -2,10 +2,10 @@ name: CI/CD
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
     tags: ['v*']
   pull_request:
-    branches: [main, master]
+    branches: [main]
 
 env:
   REGISTRY: ghcr.io
@@ -102,6 +102,6 @@ jobs:
   # DEPLOYMENT NOTE
   # ============================================================================
   # ArgoCD handles deployment automatically:
-  # - Staging: auto-syncs from 'master' branch (k8s/k8s/vauban-blog/staging)
-  # - Production: manual sync from 'master' branch (k8s/k8s/vauban-blog/production)
+  # - Staging: auto-syncs from 'main' branch (k8s/k8s/vauban-blog/staging)
+  # - Production: manual sync from 'main' branch (k8s/k8s/vauban-blog/production)
   # See k8s/argocd/ for ArgoCD Application definitions.
