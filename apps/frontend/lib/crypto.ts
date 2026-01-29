@@ -201,7 +201,7 @@ export async function decryptMessage(
       iv: new Uint8Array(iv),
     },
     sharedKey,
-    ciphertext
+    new Uint8Array(ciphertext)
   );
 
   const decoder = new TextDecoder();
