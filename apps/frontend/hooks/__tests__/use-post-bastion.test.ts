@@ -1,14 +1,13 @@
-import { vi } from 'vitest';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+import React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // ---------------------------------------------------------------------------
 // Hoisted mocks (available inside vi.mock factories)
 // ---------------------------------------------------------------------------
 
 const { web3Mocks, ipfsMocks, walletState } = vi.hoisted(() => {
-  const _vi = { fn: (...args: unknown[]) => (globalThis as Record<string, unknown>).__vitest_mocker__ ? vi.fn(...(args as [])) : (() => {}) };
-  // We can't call helper factories inside vi.hoisted, so define inline
-
   let cidCounter = 0;
   function nextCid(): string {
     return `QmMockCid${++cidCounter}`;
@@ -19,8 +18,9 @@ const { web3Mocks, ipfsMocks, walletState } = vi.hoisted(() => {
     publishReply: vi.fn().mockResolvedValue('reply-1'),
     startThread: vi.fn().mockResolvedValue('thread-root-1'),
     continueThread: vi.fn().mockResolvedValue('thread-cont-1'),
+    continueThreadBatch: vi.fn().mockResolvedValue('batch-tx-1'),
+    publishThreadAtomic: vi.fn().mockResolvedValue('thread-atomic-1'),
     calculateContentHash: vi.fn().mockResolvedValue('0x' + 'ab'.repeat(32)),
-    // re-export everything the module might need
     initStarknetProvider: vi.fn(),
     getProvider: vi.fn(() => ({ getBlock: vi.fn() })),
     setContractAddresses: vi.fn(),
@@ -67,11 +67,24 @@ vi.mock('@/lib/ipfs-client', () => ipfsMocks);
 
 // Import hook after mocks are in place
 import { usePostBastion } from '@/hooks/use-post-bastion';
-import { ALICE, createMockWalletContext, createMockAccount } from '@/__tests__/helpers/test-users';
+import { ALICE, createMockAccount } from '@/__tests__/helpers/test-users';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function createQueryWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+      mutations: { retry: false },
+    },
+  });
+  function Wrapper({ children }: { children: React.ReactNode }) {
+    return React.createElement(QueryClientProvider, { client: queryClient }, children);
+  }
+  return { wrapper: Wrapper, queryClient };
+}
 
 function setWalletConnected(connected: boolean) {
   if (connected) {
@@ -98,6 +111,8 @@ beforeEach(() => {
   web3Mocks.publishReply.mockResolvedValue('reply-1');
   web3Mocks.startThread.mockResolvedValue('thread-root-1');
   web3Mocks.continueThread.mockResolvedValue('thread-cont-1');
+  web3Mocks.continueThreadBatch.mockResolvedValue('batch-tx-1');
+  web3Mocks.publishThreadAtomic.mockResolvedValue('thread-atomic-1');
   web3Mocks.calculateContentHash.mockResolvedValue('0x' + 'ab'.repeat(32));
 
   let cidCounter = 0;
@@ -113,7 +128,8 @@ beforeEach(() => {
 describe('usePostBastion - postBastion', () => {
   it('returns null and sets error when wallet is not connected', async () => {
     setWalletConnected(false);
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
 
     let postId: string | null = null;
     await act(async () => {
@@ -125,7 +141,8 @@ describe('usePostBastion - postBastion', () => {
   });
 
   it('returns null and sets error for empty content', async () => {
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
 
     let postId: string | null = null;
     await act(async () => {
@@ -137,7 +154,8 @@ describe('usePostBastion - postBastion', () => {
   });
 
   it('returns null and sets error for whitespace-only content', async () => {
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
 
     let postId: string | null = null;
     await act(async () => {
@@ -149,7 +167,8 @@ describe('usePostBastion - postBastion', () => {
   });
 
   it('returns null and sets error when content exceeds 280 characters', async () => {
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
     const longContent = 'a'.repeat(281);
 
     let postId: string | null = null;
@@ -162,7 +181,8 @@ describe('usePostBastion - postBastion', () => {
   });
 
   it('succeeds and returns post ID calling publishTweet', async () => {
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
 
     let postId: string | null = null;
     await act(async () => {
@@ -182,7 +202,8 @@ describe('usePostBastion - postBastion', () => {
   });
 
   it('passes imageUrl through in the IPFS payload', async () => {
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
 
     await act(async () => {
       await result.current.postBastion('With image', 'https://example.com/img.png');
@@ -197,14 +218,14 @@ describe('usePostBastion - postBastion', () => {
   });
 
   it('transitions isPosting correctly during success flow', async () => {
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
 
     expect(result.current.isPosting).toBe(false);
 
     // Track isPosting states during execution
     const postingStates: boolean[] = [];
-    const originalPublishTweet = web3Mocks.publishTweet.getMockImplementation();
-    web3Mocks.publishTweet.mockImplementationOnce(async (...args: unknown[]) => {
+    web3Mocks.publishTweet.mockImplementationOnce(async () => {
       postingStates.push(true); // Should be true during publishTweet
       return 'tweet-42';
     });
@@ -222,7 +243,8 @@ describe('usePostBastion - postBastion', () => {
   it('sets error when IPFS upload fails', async () => {
     ipfsMocks.uploadJSONToIPFSViaAPI.mockRejectedValueOnce(new Error('IPFS down'));
 
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
 
     let postId: string | null = null;
     await act(async () => {
@@ -230,13 +252,14 @@ describe('usePostBastion - postBastion', () => {
     });
 
     expect(postId).toBeNull();
-    expect(result.current.error).toBe('Failed to upload content');
+    expect(result.current.error).toBe('IPFS down');
   });
 
   it('sets error when publishTweet fails', async () => {
     web3Mocks.publishTweet.mockRejectedValueOnce(new Error('TX reverted'));
 
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
 
     let postId: string | null = null;
     await act(async () => {
@@ -249,7 +272,8 @@ describe('usePostBastion - postBastion', () => {
 
   it('clearError resets error to null', async () => {
     setWalletConnected(false);
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
 
     await act(async () => {
       await result.current.postBastion('hello');
@@ -270,7 +294,8 @@ describe('usePostBastion - postBastion', () => {
 describe('usePostBastion - postReply', () => {
   it('returns null when wallet is not connected', async () => {
     setWalletConnected(false);
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
 
     let postId: string | null = null;
     await act(async () => {
@@ -282,7 +307,8 @@ describe('usePostBastion - postReply', () => {
   });
 
   it('returns null for empty content', async () => {
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
 
     let postId: string | null = null;
     await act(async () => {
@@ -294,7 +320,8 @@ describe('usePostBastion - postReply', () => {
   });
 
   it('returns null and sets error when reply exceeds 280 characters', async () => {
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
     const longContent = 'a'.repeat(281);
 
     let postId: string | null = null;
@@ -308,7 +335,8 @@ describe('usePostBastion - postReply', () => {
   });
 
   it('succeeds with exactly 280 characters in reply', async () => {
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
     const exact280 = 'x'.repeat(280);
 
     let postId: string | null = null;
@@ -321,7 +349,8 @@ describe('usePostBastion - postReply', () => {
   });
 
   it('succeeds and calls publishReply with parentId', async () => {
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
 
     let postId: string | null = null;
     await act(async () => {
@@ -342,7 +371,8 @@ describe('usePostBastion - postReply', () => {
   it('sets error when publishReply fails', async () => {
     web3Mocks.publishReply.mockRejectedValueOnce(new Error('Reply failed'));
 
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
 
     let postId: string | null = null;
     await act(async () => {
@@ -360,7 +390,8 @@ describe('usePostBastion - postReply', () => {
 
 describe('usePostBastion - postThreadStart', () => {
   it('succeeds and calls startThread', async () => {
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
 
     let postId: string | null = null;
     await act(async () => {
@@ -374,7 +405,8 @@ describe('usePostBastion - postThreadStart', () => {
   it('sets error when startThread fails', async () => {
     web3Mocks.startThread.mockRejectedValueOnce(new Error('Thread failed'));
 
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
 
     let postId: string | null = null;
     await act(async () => {
@@ -392,7 +424,8 @@ describe('usePostBastion - postThreadStart', () => {
 
 describe('usePostBastion - postThreadContinue', () => {
   it('succeeds and calls continueThread with threadRootId', async () => {
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
 
     let postId: string | null = null;
     await act(async () => {
@@ -413,7 +446,8 @@ describe('usePostBastion - postThreadContinue', () => {
   it('sets error when continueThread fails', async () => {
     web3Mocks.continueThread.mockRejectedValueOnce(new Error('Continue failed'));
 
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
 
     let postId: string | null = null;
     await act(async () => {
@@ -426,12 +460,130 @@ describe('usePostBastion - postThreadContinue', () => {
 });
 
 // ============================
+// postThread (batch multicall)
+// ============================
+
+describe('usePostBastion - postThread', () => {
+  it('returns null when wallet is not connected', async () => {
+    setWalletConnected(false);
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
+
+    let postId: string | null = null;
+    await act(async () => {
+      postId = await result.current.postThread(['First post', 'Second post']);
+    });
+
+    expect(postId).toBeNull();
+    expect(result.current.error).toBe('Please connect your wallet');
+  });
+
+  it('returns null for empty array', async () => {
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
+
+    let postId: string | null = null;
+    await act(async () => {
+      postId = await result.current.postThread([]);
+    });
+
+    expect(postId).toBeNull();
+    expect(result.current.error).toBe('No valid posts provided');
+  });
+
+  it('filters out empty posts', async () => {
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
+
+    let postId: string | null = null;
+    await act(async () => {
+      postId = await result.current.postThread(['Valid post', '', '   ', 'Another valid']);
+    });
+
+    // Should succeed with only valid posts
+    expect(postId).toBe('thread-atomic-1');
+    // publishThreadAtomic called with 2 valid posts
+    expect(web3Mocks.publishThreadAtomic).toHaveBeenCalledOnce();
+    expect(web3Mocks.publishThreadAtomic).toHaveBeenCalledWith(
+      walletState.account,
+      expect.arrayContaining([
+        expect.objectContaining({
+          arweaveTxId: expect.any(String),
+          ipfsCid: expect.any(String),
+          contentHash: expect.any(String),
+        }),
+      ]),
+    );
+  });
+
+  it('succeeds with single post', async () => {
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
+
+    let postId: string | null = null;
+    await act(async () => {
+      postId = await result.current.postThread(['Single post only']);
+    });
+
+    expect(postId).toBe('thread-atomic-1');
+    // publishThreadAtomic called even for single post
+    expect(web3Mocks.publishThreadAtomic).toHaveBeenCalledOnce();
+  });
+
+  it('succeeds with multiple posts using atomic transaction', async () => {
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
+
+    let postId: string | null = null;
+    await act(async () => {
+      postId = await result.current.postThread(['First', 'Second', 'Third']);
+    });
+
+    expect(postId).toBe('thread-atomic-1');
+    expect(web3Mocks.publishThreadAtomic).toHaveBeenCalledOnce();
+    // Should pass all 3 posts to publishThreadAtomic
+    const atomicCall = web3Mocks.publishThreadAtomic.mock.calls[0];
+    expect(atomicCall[1]).toHaveLength(3); // 3 posts
+  });
+
+  it('sets error when publishThreadAtomic fails', async () => {
+    web3Mocks.publishThreadAtomic.mockRejectedValueOnce(new Error('Failed to create thread'));
+
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
+
+    let postId: string | null = null;
+    await act(async () => {
+      postId = await result.current.postThread(['First', 'Second']);
+    });
+
+    expect(postId).toBeNull();
+    expect(result.current.error).toBe('Failed to create thread');
+  });
+
+  it('prepares all content in parallel', async () => {
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
+
+    await act(async () => {
+      await result.current.postThread(['Post 1', 'Post 2', 'Post 3', 'Post 4', 'Post 5']);
+    });
+
+    // 5 posts = 5 content preparations
+    expect(ipfsMocks.uploadJSONToIPFSViaAPI).toHaveBeenCalledTimes(5);
+    // 1 atomic call for entire thread (not 1+1 or 5 calls)
+    expect(web3Mocks.publishThreadAtomic).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ============================
 // Edge cases
 // ============================
 
 describe('usePostBastion - edge cases', () => {
   it('handles unicode emoji content', async () => {
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
 
     let postId: string | null = null;
     await act(async () => {
@@ -444,7 +596,8 @@ describe('usePostBastion - edge cases', () => {
   });
 
   it('succeeds with exactly 280 characters', async () => {
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
     const exact280 = 'x'.repeat(280);
 
     let postId: string | null = null;
@@ -457,7 +610,8 @@ describe('usePostBastion - edge cases', () => {
   });
 
   it('guards against concurrent calls via isPosting', async () => {
-    const { result } = renderHook(() => usePostBastion());
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
 
     // First call succeeds normally
     await act(async () => {
@@ -473,5 +627,30 @@ describe('usePostBastion - edge cases', () => {
     });
 
     expect(web3Mocks.publishTweet).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears RPC cache after successful mutation', async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ cleared: true }), { status: 200 })
+    );
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mockFetch;
+
+    const { wrapper, queryClient } = createQueryWrapper();
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => usePostBastion(), { wrapper });
+
+    await act(async () => {
+      await result.current.postBastion('Hello');
+    });
+
+    // Should have called DELETE /api/rpc to clear cache
+    expect(mockFetch).toHaveBeenCalledWith('/api/rpc', { method: 'DELETE' });
+    // Should have invalidated post queries
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['posts'] })
+    );
+
+    globalThis.fetch = originalFetch;
   });
 });

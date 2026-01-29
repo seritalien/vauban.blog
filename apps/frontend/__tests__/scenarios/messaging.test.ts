@@ -54,7 +54,7 @@ describe('Messaging Scenarios', () => {
     const bobAddress = '0xBob';
 
     // Both users generate keys
-    const aliceKeys = await generateKeyPair();
+    await generateKeyPair(); // Alice keys (used implicitly for key-pair generation)
     const bobKeys = await generateKeyPair();
 
     const bobPublicExported = await exportPublicKey(bobKeys.publicKey);

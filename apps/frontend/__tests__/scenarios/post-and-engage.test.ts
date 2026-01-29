@@ -1,5 +1,3 @@
-import { vi } from 'vitest';
-
 // =============================================================================
 // FILE 4: Post-and-Engage Integration Scenario Tests
 // =============================================================================
@@ -15,13 +13,12 @@ import { ALICE, BOB } from '../helpers/test-users';
 // In-memory stores
 let postStore: ReturnType<typeof createMockPostStore>;
 let socialStore: ReturnType<typeof createMockSocialStore>;
-let ipfsStore: ReturnType<typeof createMockIPFSStore>;
 let web3Mock: ReturnType<typeof mockWeb3Utils>;
 
 beforeEach(() => {
   postStore = createMockPostStore();
   socialStore = createMockSocialStore();
-  ipfsStore = createMockIPFSStore();
+  createMockIPFSStore();
   web3Mock = mockWeb3Utils();
   resetCidCounter();
 

@@ -12,14 +12,12 @@ vi.mock('@/providers/wallet-provider', () => ({
   useWallet: vi.fn(),
 }));
 
-const mockPostThreadStart = vi.fn();
-const mockPostThreadContinue = vi.fn();
+const mockPostThread = vi.fn();
 const mockClearError = vi.fn();
 
 vi.mock('@/hooks/use-post-bastion', () => ({
   usePostBastion: vi.fn(() => ({
-    postThreadStart: mockPostThreadStart,
-    postThreadContinue: mockPostThreadContinue,
+    postThread: mockPostThread,
     isPosting: false,
     error: null,
     clearError: mockClearError,
@@ -35,7 +33,6 @@ vi.mock('@/components/ui/Toast', () => ({
 }));
 
 vi.mock('@vauban/web3-utils', () => ({
-  getPublishCooldown: vi.fn().mockResolvedValue(0),
   initStarknetProvider: vi.fn(),
   getProvider: vi.fn(),
   followsAbi: [],
@@ -68,7 +65,6 @@ vi.mock('framer-motion', () => ({
 
 import { useWallet } from '@/providers/wallet-provider';
 import { usePostBastion } from '@/hooks/use-post-bastion';
-import { getPublishCooldown } from '@vauban/web3-utils';
 import ThreadComposer from '../ThreadComposer';
 
 // ---------------------------------------------------------------------------
@@ -94,11 +90,9 @@ function renderThread(props: Partial<React.ComponentProps<typeof ThreadComposer>
 describe('ThreadComposer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockPostThreadStart.mockResolvedValue('thread-root-1');
-    mockPostThreadContinue.mockResolvedValue('thread-cont-1');
+    mockPostThread.mockResolvedValue('thread-root-1');
     (usePostBastion as Mock).mockReturnValue({
-      postThreadStart: mockPostThreadStart,
-      postThreadContinue: mockPostThreadContinue,
+      postThread: mockPostThread,
       isPosting: false,
       error: null,
       clearError: mockClearError,
@@ -156,9 +150,6 @@ describe('ThreadComposer', () => {
       expect(screen.getByText('2/2')).toBeInTheDocument();
 
       // Remove one post (there should be a remove button)
-      const removeButtons = screen.getAllByRole('button').filter(
-        (btn) => btn.querySelector('svg.w-4'),
-      );
       // Find the trash icon button (the remove button has a trash SVG)
       const trashBtn = Array.from(document.querySelectorAll('button')).find(
         (btn) => btn.querySelector('path[d*="M19 7l"]'),
@@ -232,23 +223,7 @@ describe('ThreadComposer', () => {
   describe('submission', () => {
     beforeEach(() => setConnected());
 
-    it('calls getPublishCooldown for multi-post thread', async () => {
-      renderThread();
-      const textarea = screen.getByPlaceholderText('Start your thread...');
-      fireEvent.change(textarea, { target: { value: 'First post' } });
-
-      fireEvent.click(screen.getByText('Add another post'));
-      const secondTextarea = screen.getByPlaceholderText('Add to your thread...');
-      fireEvent.change(secondTextarea, { target: { value: 'Second post' } });
-
-      await act(async () => {
-        fireEvent.click(screen.getByText('Post thread (2)'));
-      });
-
-      expect(getPublishCooldown).toHaveBeenCalled();
-    });
-
-    it('calls postThreadStart for first post', async () => {
+    it('calls postThread with single post', async () => {
       renderThread();
       const textarea = screen.getByPlaceholderText('Start your thread...');
       fireEvent.change(textarea, { target: { value: 'First post' } });
@@ -257,12 +232,10 @@ describe('ThreadComposer', () => {
         fireEvent.click(screen.getByText('Post thread (1)'));
       });
 
-      expect(mockPostThreadStart).toHaveBeenCalledWith('First post');
+      expect(mockPostThread).toHaveBeenCalledWith(['First post']);
     });
 
-    it('calls postThreadContinue for subsequent posts with rootId', async () => {
-      (getPublishCooldown as Mock).mockResolvedValue(0);
-
+    it('calls postThread with multiple posts as array', async () => {
       renderThread();
       const textarea = screen.getByPlaceholderText('Start your thread...');
       fireEvent.change(textarea, { target: { value: 'First post' } });
@@ -275,27 +248,22 @@ describe('ThreadComposer', () => {
         fireEvent.click(screen.getByText('Post thread (2)'));
       });
 
-      expect(mockPostThreadContinue).toHaveBeenCalledWith('Second post', 'thread-root-1');
+      expect(mockPostThread).toHaveBeenCalledWith(['First post', 'Second post']);
     });
 
-    it('partial failure shows error toast', async () => {
-      (getPublishCooldown as Mock).mockResolvedValue(0);
-      mockPostThreadContinue.mockResolvedValue(null);
+    it('failure shows error toast', async () => {
+      mockPostThread.mockResolvedValue(null);
 
       renderThread();
       const textarea = screen.getByPlaceholderText('Start your thread...');
       fireEvent.change(textarea, { target: { value: 'First post' } });
 
-      fireEvent.click(screen.getByText('Add another post'));
-      const secondTextarea = screen.getByPlaceholderText('Add to your thread...');
-      fireEvent.change(secondTextarea, { target: { value: 'Second post' } });
-
       await act(async () => {
-        fireEvent.click(screen.getByText('Post thread (2)'));
+        fireEvent.click(screen.getByText('Post thread (1)'));
       });
 
       expect(mockShowToast).toHaveBeenCalledWith(
-        expect.stringContaining('partially published'),
+        expect.stringContaining('Failed to publish thread'),
         'error',
       );
     });
@@ -328,32 +296,52 @@ describe('ThreadComposer', () => {
     });
   });
 
-  // ===== Cooldown =====
+  // ===== Publishing state =====
 
-  describe('cooldown', () => {
+  describe('publishing state', () => {
     beforeEach(() => setConnected());
 
-    it('shows publishing progress during submission', async () => {
-      (getPublishCooldown as Mock).mockResolvedValue(0);
-      let resolveThreadStart!: (val: string) => void;
-      mockPostThreadStart.mockImplementation(
-        () => new Promise<string>((r) => { resolveThreadStart = r; }),
+    it('shows publishing state during submission', async () => {
+      mockPostThread.mockImplementation(
+        () => new Promise<string>(() => { /* never resolves – keeps publishing state active */ }),
       );
+
+      // Mock isPosting state
+      (usePostBastion as Mock).mockReturnValue({
+        postThread: mockPostThread,
+        isPosting: true,
+        error: null,
+        clearError: mockClearError,
+      });
 
       renderThread();
       const textarea = screen.getByPlaceholderText('Start your thread...');
       fireEvent.change(textarea, { target: { value: 'First post' } });
 
+      // Should show publishing state since isPosting is true
+      expect(screen.getByText('Publishing...')).toBeInTheDocument();
+    });
+
+    it('uses batch multicall for entire thread', async () => {
+      renderThread();
+      const textarea = screen.getByPlaceholderText('Start your thread...');
+      fireEvent.change(textarea, { target: { value: 'First post' } });
+
+      fireEvent.click(screen.getByText('Add another post'));
+      const secondTextarea = screen.getByPlaceholderText('Add to your thread...');
+      fireEvent.change(secondTextarea, { target: { value: 'Second post' } });
+
+      fireEvent.click(screen.getByText('Add another post'));
+      const thirdTextarea = screen.getAllByPlaceholderText('Add to your thread...')[1];
+      fireEvent.change(thirdTextarea, { target: { value: 'Third post' } });
+
       await act(async () => {
-        fireEvent.click(screen.getByText('Post thread (1)'));
+        fireEvent.click(screen.getByText('Post thread (3)'));
       });
 
-      // Should show publishing state
-      expect(screen.getByText(/Publishing/)).toBeInTheDocument();
-
-      await act(async () => {
-        resolveThreadStart('thread-root-1');
-      });
+      // All posts submitted in a single batch call
+      expect(mockPostThread).toHaveBeenCalledTimes(1);
+      expect(mockPostThread).toHaveBeenCalledWith(['First post', 'Second post', 'Third post']);
     });
   });
 });

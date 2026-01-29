@@ -3,12 +3,10 @@ use snforge_std::{
     declare, ContractClassTrait, DeclareResultTrait,
     start_cheat_caller_address, stop_cheat_caller_address,
     start_cheat_block_timestamp_global,
-    spy_events, EventSpyAssertionsTrait,
 };
 use starknet::{ContractAddress, contract_address_const};
 use vauban_blog::role_registry::{
     IRoleRegistryDispatcher, IRoleRegistryDispatcherTrait,
-    UserRole, RoleChangeRequest,
     ROLE_READER, ROLE_WRITER, ROLE_CONTRIBUTOR, ROLE_MODERATOR,
     ROLE_EDITOR, ROLE_ADMIN, ROLE_OWNER
 };

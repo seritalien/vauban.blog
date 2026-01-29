@@ -7,7 +7,6 @@ use snforge_std::{
 use starknet::{ContractAddress, contract_address_const};
 use vauban_blog::blog_registry::{
     IBlogRegistryDispatcher, IBlogRegistryDispatcherTrait,
-    PostMetadata, PostVersion,
     POST_DRAFT, POST_PENDING_REVIEW, POST_PUBLISHED, POST_REJECTED, POST_ARCHIVED,
     POST_TYPE_TWEET, POST_TYPE_THREAD, POST_TYPE_ARTICLE,
 };

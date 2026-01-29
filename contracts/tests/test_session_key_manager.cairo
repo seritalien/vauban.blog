@@ -7,7 +7,6 @@ use snforge_std::{
 use starknet::{ContractAddress, contract_address_const};
 use vauban_blog::session_key_manager::{
     ISessionKeyManagerDispatcher, ISessionKeyManagerDispatcherTrait,
-    SessionKey,
 };
 
 // ============================================================================

@@ -7,7 +7,6 @@ use snforge_std::{
 use starknet::{ContractAddress, contract_address_const};
 use vauban_blog::treasury::{
     ITreasuryDispatcher, ITreasuryDispatcherTrait,
-    RevenueConfig, Earnings,
 };
 
 // ============================================================================

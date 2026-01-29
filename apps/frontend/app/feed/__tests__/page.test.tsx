@@ -1,4 +1,4 @@
-import { vi } from 'vitest';
+import { vi, describe, it, expect, beforeEach, beforeAll } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
@@ -62,6 +62,21 @@ vi.mock('@/providers/wallet-provider', () => ({
 vi.mock('next/link', () => ({
   default: ({ children, href, ...props }: any) => <a href={href} {...props}>{children}</a>,
 }));
+
+// Stub IntersectionObserver (jsdom doesn't provide it)
+const mockObserve = vi.fn();
+const mockDisconnect = vi.fn();
+
+class MockIntersectionObserver {
+  observe = mockObserve;
+  unobserve = vi.fn();
+  disconnect = mockDisconnect;
+  constructor(_cb: IntersectionObserverCallback, _opts?: IntersectionObserverInit) {}
+}
+
+beforeAll(() => {
+  globalThis.IntersectionObserver = MockIntersectionObserver as unknown as typeof IntersectionObserver;
+});
 
 // Import the page component (after mocks are set up)
 import FeedPage from '../page';
@@ -244,6 +259,24 @@ describe('FeedPage', () => {
     expect(screen.getByTestId('count-following').textContent).toBe('0');
   });
 
+  it('tab counts exclude thread continuations', () => {
+    const posts = [
+      createMockPost({ id: '10', postType: POST_TYPE_THREAD, content: 'Thread root' }),
+      // Thread continuation: threadRootId set to root id and different from own id
+      createMockPost({ id: '11', postType: POST_TYPE_THREAD, content: 'Continuation 1', threadRootId: '10' }),
+      createMockPost({ id: '12', postType: POST_TYPE_THREAD, content: 'Continuation 2', threadRootId: '10' }),
+      createMockPost({ id: '13', postType: POST_TYPE_TWEET, content: 'Tweet' }),
+    ];
+
+    setupDefaults({ posts });
+    render(<FeedPage />);
+
+    // Only 2 root posts in forYou (thread root + tweet), continuations excluded
+    expect(screen.getByTestId('count-forYou').textContent).toBe('2');
+    // Only 1 thread root, not 3
+    expect(screen.getByTestId('count-threads').textContent).toBe('1');
+  });
+
   it('thread composer toggle button works', async () => {
     setupDefaults({ posts: [createMockPost()] });
 
@@ -299,7 +332,7 @@ describe('FeedPage', () => {
     vi.useRealTimers();
   });
 
-  it('load more button appears when hasMore is true', () => {
+  it('infinite scroll sentinel is observed when hasMore is true', () => {
     setupDefaults({
       posts: [createMockPost()],
       hasMore: true,
@@ -308,15 +341,18 @@ describe('FeedPage', () => {
 
     render(<FeedPage />);
 
-    expect(screen.getByText('Charger plus')).toBeDefined();
+    // IntersectionObserver's observe method should have been called on the sentinel
+    expect(mockObserve).toHaveBeenCalled();
+    // "Vous avez tout vu !" should NOT appear since hasMore is true
+    expect(screen.queryByText('Vous avez tout vu !')).toBeNull();
   });
 
-  it('load more button hidden when no posts or hasMore is false', () => {
-    setupDefaults({ posts: [], hasMore: false });
+  it('end-of-feed message shown when no more posts', () => {
+    setupDefaults({ posts: [createMockPost()], hasMore: false });
 
     render(<FeedPage />);
 
-    expect(screen.queryByText('Charger plus')).toBeNull();
+    expect(screen.getByText('Vous avez tout vu !')).toBeDefined();
   });
 
   it('followedAddresses passed to Timeline', () => {
@@ -325,7 +361,7 @@ describe('FeedPage', () => {
 
     render(<FeedPage />);
 
-    const timeline = screen.getByTestId('timeline');
+    screen.getByTestId('timeline');
     expect(screen.getByTestId('followed-count').textContent).toBe('2');
   });
 });

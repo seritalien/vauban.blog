@@ -13,16 +13,14 @@ import { vi } from 'vitest';
 // - useAuthorStats consumes usePosts() cache (no extra RPC calls for posts).
 // =============================================================================
 
-import { mockWeb3Utils, createMockPostStore } from '../helpers/mock-contracts';
-import { assertMaxCalls, assertExactCalls, assertNoNPlusOne } from '../helpers/performance';
+import { mockWeb3Utils } from '../helpers/mock-contracts';
+import { assertExactCalls, assertNoNPlusOne } from '../helpers/performance';
 import { ALICE } from '../helpers/test-users';
 
 let web3Mock: ReturnType<typeof mockWeb3Utils>;
-let postStore: ReturnType<typeof createMockPostStore>;
 
 beforeEach(() => {
   web3Mock = mockWeb3Utils();
-  postStore = createMockPostStore();
   vi.clearAllMocks();
 });
 

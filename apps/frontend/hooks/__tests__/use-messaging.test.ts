@@ -1,4 +1,4 @@
-import { vi } from 'vitest';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 
 // ---------------------------------------------------------------------------
@@ -55,6 +55,14 @@ vi.mock('@/providers/wallet-provider', () => ({
 vi.mock('@/lib/crypto', () => cryptoMocks);
 
 vi.mock('@/lib/ipfs-client', () => ipfsMocks);
+
+vi.mock('@/lib/public-key-registry', () => ({
+  publishPublicKey: vi.fn().mockResolvedValue('QmPublicKeyCid'),
+}));
+
+vi.mock('@/lib/profiles', () => ({
+  saveProfile: vi.fn(),
+}));
 
 // Import hook after mocks
 import { useMessaging } from '@/hooks/use-messaging';
@@ -305,8 +313,7 @@ describe('useMessaging - sendMessage', () => {
 
     // Track isSending states during execution
     const sendingStates: boolean[] = [];
-    const origUpload = ipfsMocks.uploadJSONToIPFSViaAPI.getMockImplementation();
-    ipfsMocks.uploadJSONToIPFSViaAPI.mockImplementationOnce(async (data: unknown) => {
+    ipfsMocks.uploadJSONToIPFSViaAPI.mockImplementationOnce(async (_data: unknown) => {
       sendingStates.push(true); // Should be true during upload
       return 'QmSent1';
     });

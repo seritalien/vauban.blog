@@ -1,4 +1,4 @@
-import { vi } from 'vitest';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -532,8 +532,8 @@ describe('useFollowStats - fetches all 4 values on mount', () => {
 
     expect(result.current.stats.followerCount).toBe(3);
     expect(result.current.stats.followingCount).toBe(2);
-    expect(result.current.followers).toEqual(['0xF1', '0xF2', '0xF3']);
-    expect(result.current.following).toEqual(['0xG1', '0xG2']);
+    expect(result.current.followers).toEqual(['0xf1', '0xf2', '0xf3']);
+    expect(result.current.following).toEqual(['0xg1', '0xg2']);  // 0xG1 → lowercased
   });
 });
 

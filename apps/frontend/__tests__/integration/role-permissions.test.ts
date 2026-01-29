@@ -596,7 +596,7 @@ describe('useHasRole Hook', () => {
       [ROLES.ADMIN, ROLES.OWNER, false, 'ADMIN does not have OWNER'],
       [ROLES.OWNER, ROLES.ADMIN, true, 'OWNER has ADMIN'],
       [ROLES.OWNER, ROLES.OWNER, true, 'OWNER has OWNER'],
-    ])('user with role %i checking for minimum %i returns %s (%s)', async (userRole, minRole, expected) => {
+    ])('user with role %i checking for minimum %i returns %s (%s)', async (userRole, minRole, expected, _desc) => {
       setUserRole(userRole);
       const { wrapper } = createQueryWrapper();
 

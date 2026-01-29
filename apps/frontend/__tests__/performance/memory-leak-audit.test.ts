@@ -7,7 +7,7 @@ import { vi } from 'vitest';
 // preventing state updates after unmount (memory leaks / React warnings).
 // =============================================================================
 
-import { ALICE, BOB } from '../helpers/test-users';
+// ALICE and BOB are available from '../helpers/test-users' if needed in future tests.
 
 // =============================================================================
 // Simulated async operation with cancellation
@@ -60,7 +60,7 @@ describe('Memory Leak Audit', () => {
      * (set a cancelled flag), verify no state update occurs.
      */
     let stateUpdated = false;
-    const setIsFollowing = (value: boolean) => {
+    const setIsFollowing = (_value: boolean) => {
       stateUpdated = true;
     };
 
@@ -99,7 +99,7 @@ describe('Memory Leak Audit', () => {
     let unmountedStateUpdates = 0;
     let isMounted = true;
 
-    const safeSetState = (value: unknown) => {
+    const safeSetState = (_value: unknown) => {
       if (isMounted) {
         mountedStateUpdates++;
       } else {
@@ -147,7 +147,7 @@ describe('Memory Leak Audit', () => {
     let stateUpdatedAfterUnmount = false;
 
     // Mock setState that tracks post-unmount updates
-    setLikeCount = (n: number) => {
+    setLikeCount = (_n: number) => {
       if (!mounted) {
         stateUpdatedAfterUnmount = true;
       }

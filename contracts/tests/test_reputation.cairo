@@ -8,10 +8,9 @@ use starknet::{ContractAddress, contract_address_const};
 use vauban_blog::reputation::{
     IReputationDispatcher, IReputationDispatcherTrait,
     REP_POST_PUBLISHED, REP_POST_FEATURED, REP_COMMENT, REP_LIKE_RECEIVED,
-    REP_SUBSCRIBER_GAINED, REP_SPAM_PENALTY,
-    BADGE_FIRST_POST, BADGE_PROLIFIC_WRITER, BADGE_FEATURED_AUTHOR,
+    REP_SUBSCRIBER_GAINED,
+    BADGE_FIRST_POST, BADGE_FEATURED_AUTHOR,
     BADGE_EARLY_ADOPTER, BADGE_VERIFIED, BADGE_PREMIUM_AUTHOR,
-    LEVEL_2_THRESHOLD, LEVEL_3_THRESHOLD,
 };
 
 // ============================================================================

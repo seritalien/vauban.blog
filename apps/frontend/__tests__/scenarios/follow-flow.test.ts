@@ -5,7 +5,7 @@ import { vi } from 'vitest';
 // =============================================================================
 
 import { createMockFollowStore } from '../helpers/mock-contracts';
-import { ALICE, BOB, createMockAccount } from '../helpers/test-users';
+import { ALICE, BOB } from '../helpers/test-users';
 
 let followStore: ReturnType<typeof createMockFollowStore>;
 
@@ -23,12 +23,12 @@ beforeEach(() => {
   vi.clearAllMocks();
 
   // Wire contract mocks to the store
-  mockContract.follow.mockImplementation(async (target: string) => {
+  mockContract.follow.mockImplementation(async (_target: string) => {
     // Determine who is calling from context (set per test)
     return { transaction_hash: '0xTX_follow' };
   });
 
-  mockContract.unfollow.mockImplementation(async (target: string) => {
+  mockContract.unfollow.mockImplementation(async (_target: string) => {
     return { transaction_hash: '0xTX_unfollow' };
   });
 

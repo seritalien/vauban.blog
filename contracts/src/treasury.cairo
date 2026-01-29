@@ -43,7 +43,7 @@ pub struct RevenueSplit {
 
 #[starknet::contract]
 mod Treasury {
-    use starknet::{ContractAddress, get_caller_address, get_block_timestamp, get_contract_address};
+    use starknet::{ContractAddress, get_caller_address, get_block_timestamp};
     use starknet::storage::{Map, StoragePathEntry, StoragePointerReadAccess, StoragePointerWriteAccess};
     use core::num::traits::Zero;
     use super::{RevenueConfig, Earnings, PaymentRecord, RevenueSplit};

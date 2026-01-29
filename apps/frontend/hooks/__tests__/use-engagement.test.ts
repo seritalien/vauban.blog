@@ -1,4 +1,4 @@
-import { vi, type Mock } from 'vitest';
+import { vi } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -347,7 +347,7 @@ describe('useLikeMutation', () => {
     setConnected();
     mockFetchResponse({ 'post-1': { likes: 10, comments: 2 } });
 
-    const { Wrapper, queryClient } = createQueryWrapper();
+    const { Wrapper } = createQueryWrapper();
     const { result } = renderHook(
       () => ({
         mutation: useLikeMutation('post-1'),
