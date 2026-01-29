@@ -30,7 +30,7 @@ fi
 
 # Build and apply
 echo "📦 Building manifests with Kustomize..."
-$KUSTOMIZE build "$SCRIPT_DIR/overlays/$ENVIRONMENT" > /tmp/vauban-manifests.yaml
+$KUSTOMIZE build "$SCRIPT_DIR/k8s/vauban-blog/$ENVIRONMENT" > /tmp/vauban-manifests.yaml
 
 echo "📋 Manifests to be applied:"
 cat /tmp/vauban-manifests.yaml | grep "^kind:" | sort | uniq -c
@@ -49,8 +49,8 @@ kubectl apply -f /tmp/vauban-manifests.yaml
 
 # Wait for deployments
 echo "⏳ Waiting for deployments to be ready..."
-NAMESPACE="vauban"
-[[ "$ENVIRONMENT" == "staging" ]] && NAMESPACE="vauban-staging"
+NAMESPACE="vauban-blog"
+[[ "$ENVIRONMENT" == "staging" ]] && NAMESPACE="vauban-blog-staging"
 
 kubectl rollout status deployment/frontend -n $NAMESPACE --timeout=300s
 kubectl rollout status deployment/redis -n $NAMESPACE --timeout=120s

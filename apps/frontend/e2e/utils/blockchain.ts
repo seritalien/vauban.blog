@@ -4,11 +4,13 @@
  * These utilities allow E2E tests to interact directly with the Madara devnet.
  */
 
-import { Account, RpcProvider, shortString } from 'starknet';
-import { DEPLOYER, CONTRACTS, RPC_URL } from '../fixtures/test-accounts';
+import { Account, RpcProvider, shortString, Contract } from 'starknet';
+import { DEPLOYER, CONTRACTS, RPC_URL, USER_A, USER_B } from '../fixtures/test-accounts';
+import type { TestAccount } from '../fixtures/test-accounts';
+import socialAbi from '../../abis/social.json';
 
 // Re-export for convenience
-export { DEPLOYER, CONTRACTS, RPC_URL };
+export { DEPLOYER, CONTRACTS, RPC_URL, USER_A, USER_B };
 
 /**
  * Get a configured RPC provider for the devnet
@@ -46,6 +48,9 @@ export async function getBlockNumber(): Promise<number> {
  * This allows atomic thread posting in a single multicall transaction
  */
 export async function disablePublishCooldown(account: Account): Promise<void> {
+  // Defensively ensure BlogRegistry is not paused (may be left paused by error-recovery tests)
+  await ensureUnpaused(account);
+
   const result = await account.execute({
     contractAddress: CONTRACTS.BlogRegistry,
     entrypoint: 'set_publish_cooldown',
@@ -293,4 +298,596 @@ export async function publishTweet(
     txHash: result.transaction_hash,
     postId: postCountAfter,
   };
+}
+
+/**
+ * Wait for a state change by polling until a condition is met or timeout.
+ * Useful when the RPC node hasn't propagated state yet after waitForTransaction.
+ */
+export async function waitForState<T>(
+  fn: () => Promise<T>,
+  expected: T,
+  timeoutMs: number = 10000,
+  intervalMs: number = 500
+): Promise<T> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const result = await fn();
+    if (result === expected) return result;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  return fn(); // Final attempt - return whatever it is for the assertion
+}
+
+// =============================================================================
+// Account Helpers
+// =============================================================================
+
+/**
+ * Get an Account instance from a TestAccount
+ */
+export function getUserAccount(testAccount: TestAccount): Account {
+  const provider = getProvider();
+  return new Account(provider, testAccount.address, testAccount.privateKey);
+}
+
+// =============================================================================
+// Article / BlogRegistry Helpers
+// =============================================================================
+
+/**
+ * Publish an article using publish_post (POST_TYPE_ARTICLE).
+ * Admins/editors get status PUBLISHED; non-admins get DRAFT.
+ */
+export async function publishArticle(
+  account: Account
+): Promise<{ txHash: string; postId: number }> {
+  const mockCid = `QmArticle${Date.now()}`;
+  const mockHash = `0x${BigInt(Date.now()).toString(16).slice(0, 62)}`;
+  const [cid1, cid2] = splitStringForFelt252(mockCid);
+
+  const result = await account.execute({
+    contractAddress: CONTRACTS.BlogRegistry,
+    entrypoint: 'publish_post',
+    calldata: [
+      shortString.encodeShortString(cid1),
+      cid2 ? shortString.encodeShortString(cid2) : '0',
+      shortString.encodeShortString(cid1),
+      cid2 ? shortString.encodeShortString(cid2) : '0',
+      mockHash,
+      '0', // price_low (u256)
+      '0', // price_high (u256)
+      0, // is_encrypted
+    ],
+  });
+
+  const receipt = await account.waitForTransaction(result.transaction_hash);
+  const executionStatus = (receipt as { execution_status?: string }).execution_status;
+  if (executionStatus !== 'SUCCEEDED') {
+    const reason = (receipt as { revert_reason?: string }).revert_reason || 'Unknown';
+    throw new Error(`publishArticle failed: ${executionStatus}, reason: ${reason}`);
+  }
+
+  const postCountAfter = await getPostCount();
+  return { txHash: result.transaction_hash, postId: postCountAfter };
+}
+
+/**
+ * Get a post's status field (index 14 in PostMetadata)
+ */
+export async function getPostStatus(postId: number): Promise<number> {
+  const provider = getProvider();
+  const result = await provider.callContract({
+    contractAddress: CONTRACTS.BlogRegistry,
+    entrypoint: 'get_post',
+    calldata: [postId.toString()],
+  });
+  return Number(result[14]);
+}
+
+/**
+ * Submit a post for review (DRAFT -> PENDING_REVIEW or REJECTED -> PENDING_REVIEW)
+ */
+export async function submitForReview(account: Account, postId: number): Promise<void> {
+  const result = await account.execute({
+    contractAddress: CONTRACTS.BlogRegistry,
+    entrypoint: 'submit_for_review',
+    calldata: [postId.toString()],
+  });
+  const receipt = await account.waitForTransaction(result.transaction_hash);
+  const executionStatus = (receipt as { execution_status?: string }).execution_status;
+  if (executionStatus !== 'SUCCEEDED') {
+    const reason = (receipt as { revert_reason?: string }).revert_reason || 'Unknown';
+    throw new Error(`submitForReview failed: ${executionStatus}, reason: ${reason}`);
+  }
+}
+
+/**
+ * Admin approves a post (PENDING_REVIEW -> PUBLISHED)
+ */
+export async function approvePost(account: Account, postId: number): Promise<void> {
+  const result = await account.execute({
+    contractAddress: CONTRACTS.BlogRegistry,
+    entrypoint: 'approve_post',
+    calldata: [postId.toString()],
+  });
+  await account.waitForTransaction(result.transaction_hash);
+}
+
+/**
+ * Admin rejects a post (PENDING_REVIEW -> REJECTED)
+ */
+export async function rejectPost(account: Account, postId: number): Promise<void> {
+  const result = await account.execute({
+    contractAddress: CONTRACTS.BlogRegistry,
+    entrypoint: 'reject_post',
+    calldata: [postId.toString()],
+  });
+  await account.waitForTransaction(result.transaction_hash);
+}
+
+/**
+ * Feature a published post
+ */
+export async function featurePost(account: Account, postId: number): Promise<void> {
+  const result = await account.execute({
+    contractAddress: CONTRACTS.BlogRegistry,
+    entrypoint: 'feature_post',
+    calldata: [postId.toString()],
+  });
+  await account.waitForTransaction(result.transaction_hash);
+}
+
+/**
+ * Unfeature a post
+ */
+export async function unfeaturePost(account: Account, postId: number): Promise<void> {
+  const result = await account.execute({
+    contractAddress: CONTRACTS.BlogRegistry,
+    entrypoint: 'unfeature_post',
+    calldata: [postId.toString()],
+  });
+  await account.waitForTransaction(result.transaction_hash);
+}
+
+/**
+ * Archive a published post (PUBLISHED -> ARCHIVED)
+ */
+export async function archivePost(account: Account, postId: number): Promise<void> {
+  const result = await account.execute({
+    contractAddress: CONTRACTS.BlogRegistry,
+    entrypoint: 'archive_post',
+    calldata: [postId.toString()],
+  });
+  const receipt = await account.waitForTransaction(result.transaction_hash);
+  const executionStatus = (receipt as { execution_status?: string }).execution_status;
+  if (executionStatus !== 'SUCCEEDED') {
+    const reason = (receipt as { revert_reason?: string }).revert_reason || 'Unknown';
+    throw new Error(`archivePost failed: ${executionStatus}, reason: ${reason}`);
+  }
+}
+
+/**
+ * Unarchive an archived post (ARCHIVED -> PUBLISHED)
+ */
+export async function unarchivePost(account: Account, postId: number): Promise<void> {
+  const result = await account.execute({
+    contractAddress: CONTRACTS.BlogRegistry,
+    entrypoint: 'unarchive_post',
+    calldata: [postId.toString()],
+  });
+  const receipt = await account.waitForTransaction(result.transaction_hash);
+  const executionStatus = (receipt as { execution_status?: string }).execution_status;
+  if (executionStatus !== 'SUCCEEDED') {
+    const reason = (receipt as { revert_reason?: string }).revert_reason || 'Unknown';
+    throw new Error(`unarchivePost failed: ${executionStatus}, reason: ${reason}`);
+  }
+}
+
+/**
+ * Soft-delete a post (admin only)
+ */
+export async function deletePost(account: Account, postId: number): Promise<void> {
+  const result = await account.execute({
+    contractAddress: CONTRACTS.BlogRegistry,
+    entrypoint: 'delete_post',
+    calldata: [postId.toString()],
+  });
+  await account.waitForTransaction(result.transaction_hash);
+}
+
+/**
+ * Check if a post is deleted (index 12 in PostMetadata)
+ */
+export async function isPostDeleted(postId: number): Promise<boolean> {
+  const provider = getProvider();
+  const result = await provider.callContract({
+    contractAddress: CONTRACTS.BlogRegistry,
+    entrypoint: 'get_post',
+    calldata: [postId.toString()],
+  });
+  return Number(result[12]) === 1;
+}
+
+/**
+ * Pause the BlogRegistry
+ */
+export async function pauseBlogRegistry(account: Account): Promise<void> {
+  const result = await account.execute({
+    contractAddress: CONTRACTS.BlogRegistry,
+    entrypoint: 'pause',
+    calldata: [],
+  });
+  await account.waitForTransaction(result.transaction_hash);
+}
+
+/**
+ * Unpause the BlogRegistry
+ */
+export async function unpauseBlogRegistry(account: Account): Promise<void> {
+  const result = await account.execute({
+    contractAddress: CONTRACTS.BlogRegistry,
+    entrypoint: 'unpause',
+    calldata: [],
+  });
+  await account.waitForTransaction(result.transaction_hash);
+}
+
+/**
+ * Ensure BlogRegistry is not paused (defensive check).
+ * Silently succeeds if already unpaused.
+ */
+export async function ensureUnpaused(account: Account): Promise<void> {
+  try {
+    const provider = getProvider();
+    const result = await provider.callContract({
+      contractAddress: CONTRACTS.BlogRegistry,
+      entrypoint: 'is_paused',
+      calldata: [],
+    });
+    const paused = Number(result[0]) === 1;
+    if (paused) {
+      await unpauseBlogRegistry(account);
+    }
+  } catch {
+    // Ignore — might not have is_paused endpoint
+  }
+}
+
+// =============================================================================
+// Social Contract Helpers
+// =============================================================================
+
+/**
+ * Add a comment on a post
+ */
+export async function addComment(
+  account: Account,
+  postId: number,
+  contentHash: string,
+  parentCommentId: number = 0
+): Promise<{ txHash: string }> {
+  const result = await account.execute({
+    contractAddress: CONTRACTS.Social,
+    entrypoint: 'add_comment',
+    calldata: [postId.toString(), contentHash, parentCommentId.toString()],
+  });
+  const receipt = await account.waitForTransaction(result.transaction_hash);
+  const executionStatus = (receipt as { execution_status?: string }).execution_status;
+  if (executionStatus !== 'SUCCEEDED') {
+    const reason = (receipt as { revert_reason?: string }).revert_reason || 'Unknown';
+    throw new Error(`addComment failed: ${executionStatus}, reason: ${reason}`);
+  }
+  return { txHash: result.transaction_hash };
+}
+
+/**
+ * Get comment count for a post
+ */
+export async function getCommentCount(postId: number): Promise<number> {
+  const provider = getProvider();
+  const result = await provider.callContract({
+    contractAddress: CONTRACTS.Social,
+    entrypoint: 'get_comment_count_for_post',
+    calldata: [postId.toString()],
+  });
+  return Number(result[0]);
+}
+
+/**
+ * Get comments for a post (returns array with global comment IDs).
+ * Uses Contract with ABI for proper deserialization of Array<Comment>.
+ */
+export async function getCommentsForPost(
+  postId: number,
+  limit: number = 100,
+  offset: number = 0
+): Promise<Array<{ id: number; postId: number; author: string; parentCommentId: number }>> {
+  const provider = getProvider();
+  const abi = (socialAbi as any).abi || socialAbi;
+  const contract = new Contract(abi as any, CONTRACTS.Social, provider);
+  const result = await contract.get_comments_for_post(postId, limit, offset);
+
+  // Contract class returns deserialized array of Comment structs
+  return (result as any[]).map((comment: any) => ({
+    id: Number(comment.id),
+    postId: Number(comment.post_id),
+    author: comment.author?.toString() || '',
+    parentCommentId: Number(comment.parent_comment_id),
+  }));
+}
+
+/**
+ * Get a comment by ID.
+ * Comment struct: id, post_id, author, content_hash, parent_comment_id, created_at, is_deleted, like_count
+ */
+export async function getComment(commentId: number): Promise<{
+  id: number;
+  postId: number;
+  author: string;
+  contentHash: string;
+  parentCommentId: number;
+  isDeleted: boolean;
+  likeCount: number;
+}> {
+  const provider = getProvider();
+  const result = await provider.callContract({
+    contractAddress: CONTRACTS.Social,
+    entrypoint: 'get_comment',
+    calldata: [commentId.toString()],
+  });
+  return {
+    id: Number(result[0]),
+    postId: Number(result[1]),
+    author: result[2],
+    contentHash: result[3],
+    parentCommentId: Number(result[4]),
+    isDeleted: Number(result[6]) === 1,
+    likeCount: Number(result[7]),
+  };
+}
+
+/**
+ * Like a post
+ */
+export async function likePost(account: Account, postId: number): Promise<void> {
+  const result = await account.execute({
+    contractAddress: CONTRACTS.Social,
+    entrypoint: 'like_post',
+    calldata: [postId.toString()],
+  });
+  const receipt = await account.waitForTransaction(result.transaction_hash);
+  const executionStatus = (receipt as { execution_status?: string }).execution_status;
+  if (executionStatus !== 'SUCCEEDED') {
+    const reason = (receipt as { revert_reason?: string }).revert_reason || 'Unknown';
+    throw new Error(`likePost failed: ${executionStatus}, reason: ${reason}`);
+  }
+}
+
+/**
+ * Unlike a post
+ */
+export async function unlikePost(account: Account, postId: number): Promise<void> {
+  const result = await account.execute({
+    contractAddress: CONTRACTS.Social,
+    entrypoint: 'unlike_post',
+    calldata: [postId.toString()],
+  });
+  const receipt = await account.waitForTransaction(result.transaction_hash);
+  const executionStatus = (receipt as { execution_status?: string }).execution_status;
+  if (executionStatus !== 'SUCCEEDED') {
+    const reason = (receipt as { revert_reason?: string }).revert_reason || 'Unknown';
+    throw new Error(`unlikePost failed: ${executionStatus}, reason: ${reason}`);
+  }
+}
+
+/**
+ * Get like count for a post
+ */
+export async function getPostLikes(postId: number): Promise<number> {
+  const provider = getProvider();
+  const result = await provider.callContract({
+    contractAddress: CONTRACTS.Social,
+    entrypoint: 'get_post_likes',
+    calldata: [postId.toString()],
+  });
+  return Number(result[0]);
+}
+
+/**
+ * Check if a user has liked a post
+ */
+export async function hasLikedPost(postId: number, userAddress: string): Promise<boolean> {
+  const provider = getProvider();
+  const result = await provider.callContract({
+    contractAddress: CONTRACTS.Social,
+    entrypoint: 'has_liked_post',
+    calldata: [postId.toString(), userAddress],
+  });
+  return Number(result[0]) === 1;
+}
+
+/**
+ * Like a comment
+ */
+export async function likeComment(account: Account, commentId: number): Promise<void> {
+  const result = await account.execute({
+    contractAddress: CONTRACTS.Social,
+    entrypoint: 'like_comment',
+    calldata: [commentId.toString()],
+  });
+  const receipt = await account.waitForTransaction(result.transaction_hash);
+  const executionStatus = (receipt as { execution_status?: string }).execution_status;
+  if (executionStatus !== 'SUCCEEDED') {
+    const reason = (receipt as { revert_reason?: string }).revert_reason || 'Unknown';
+    throw new Error(`likeComment failed: ${executionStatus}, reason: ${reason}`);
+  }
+}
+
+/**
+ * Delete a comment (moderator or owner)
+ */
+export async function deleteComment(account: Account, commentId: number): Promise<void> {
+  const result = await account.execute({
+    contractAddress: CONTRACTS.Social,
+    entrypoint: 'delete_comment',
+    calldata: [commentId.toString()],
+  });
+  const receipt = await account.waitForTransaction(result.transaction_hash);
+  const executionStatus = (receipt as { execution_status?: string }).execution_status;
+  if (executionStatus !== 'SUCCEEDED') {
+    const reason = (receipt as { revert_reason?: string }).revert_reason || 'Unknown';
+    throw new Error(`deleteComment failed: ${executionStatus}, reason: ${reason}`);
+  }
+}
+
+/**
+ * Ban a user (moderator or owner)
+ */
+export async function banUser(account: Account, userAddress: string): Promise<void> {
+  const result = await account.execute({
+    contractAddress: CONTRACTS.Social,
+    entrypoint: 'ban_user',
+    calldata: [userAddress],
+  });
+  const receipt = await account.waitForTransaction(result.transaction_hash);
+  const executionStatus = (receipt as { execution_status?: string }).execution_status;
+  if (executionStatus !== 'SUCCEEDED') {
+    const reason = (receipt as { revert_reason?: string }).revert_reason || 'Unknown';
+    throw new Error(`banUser failed: ${executionStatus}, reason: ${reason}`);
+  }
+}
+
+/**
+ * Unban a user (moderator or owner)
+ */
+export async function unbanUser(account: Account, userAddress: string): Promise<void> {
+  const result = await account.execute({
+    contractAddress: CONTRACTS.Social,
+    entrypoint: 'unban_user',
+    calldata: [userAddress],
+  });
+  const receipt = await account.waitForTransaction(result.transaction_hash);
+  const executionStatus = (receipt as { execution_status?: string }).execution_status;
+  if (executionStatus !== 'SUCCEEDED') {
+    const reason = (receipt as { revert_reason?: string }).revert_reason || 'Unknown';
+    throw new Error(`unbanUser failed: ${executionStatus}, reason: ${reason}`);
+  }
+}
+
+/**
+ * Check if a user is banned
+ */
+export async function isBanned(userAddress: string): Promise<boolean> {
+  const provider = getProvider();
+  const result = await provider.callContract({
+    contractAddress: CONTRACTS.Social,
+    entrypoint: 'is_banned',
+    calldata: [userAddress],
+  });
+  return Number(result[0]) === 1;
+}
+
+/**
+ * Disable comment cooldown for testing
+ */
+export async function disableCommentCooldown(account: Account): Promise<void> {
+  const result = await account.execute({
+    contractAddress: CONTRACTS.Social,
+    entrypoint: 'set_comment_cooldown',
+    calldata: ['0'],
+  });
+  await account.waitForTransaction(result.transaction_hash);
+}
+
+/**
+ * Disable follow cooldown for testing
+ */
+export async function disableFollowCooldown(account: Account): Promise<void> {
+  const result = await account.execute({
+    contractAddress: CONTRACTS.Follows,
+    entrypoint: 'set_follow_cooldown',
+    calldata: ['0'],
+  });
+  await account.waitForTransaction(result.transaction_hash);
+}
+
+// =============================================================================
+// Follows Contract Helpers
+// =============================================================================
+
+/**
+ * Follow a user
+ */
+export async function followUser(account: Account, targetAddress: string): Promise<void> {
+  const result = await account.execute({
+    contractAddress: CONTRACTS.Follows,
+    entrypoint: 'follow',
+    calldata: [targetAddress],
+  });
+  const receipt = await account.waitForTransaction(result.transaction_hash);
+  const executionStatus = (receipt as { execution_status?: string }).execution_status;
+  if (executionStatus !== 'SUCCEEDED') {
+    const reason = (receipt as { revert_reason?: string }).revert_reason || 'Unknown';
+    throw new Error(`followUser failed: ${executionStatus}, reason: ${reason}`);
+  }
+}
+
+/**
+ * Unfollow a user
+ */
+export async function unfollowUser(account: Account, targetAddress: string): Promise<void> {
+  const result = await account.execute({
+    contractAddress: CONTRACTS.Follows,
+    entrypoint: 'unfollow',
+    calldata: [targetAddress],
+  });
+  const receipt = await account.waitForTransaction(result.transaction_hash);
+  const executionStatus = (receipt as { execution_status?: string }).execution_status;
+  if (executionStatus !== 'SUCCEEDED') {
+    const reason = (receipt as { revert_reason?: string }).revert_reason || 'Unknown';
+    throw new Error(`unfollowUser failed: ${executionStatus}, reason: ${reason}`);
+  }
+}
+
+/**
+ * Check if one user is following another
+ */
+export async function isFollowing(
+  followerAddress: string,
+  followedAddress: string
+): Promise<boolean> {
+  const provider = getProvider();
+  const result = await provider.callContract({
+    contractAddress: CONTRACTS.Follows,
+    entrypoint: 'is_following',
+    calldata: [followerAddress, followedAddress],
+  });
+  return Number(result[0]) === 1;
+}
+
+/**
+ * Get follower count for a user
+ */
+export async function getFollowerCount(userAddress: string): Promise<number> {
+  const provider = getProvider();
+  const result = await provider.callContract({
+    contractAddress: CONTRACTS.Follows,
+    entrypoint: 'get_follower_count',
+    calldata: [userAddress],
+  });
+  return Number(result[0]);
+}
+
+/**
+ * Get following count for a user
+ */
+export async function getFollowingCount(userAddress: string): Promise<number> {
+  const provider = getProvider();
+  const result = await provider.callContract({
+    contractAddress: CONTRACTS.Follows,
+    entrypoint: 'get_following_count',
+    calldata: [userAddress],
+  });
+  return Number(result[0]);
 }

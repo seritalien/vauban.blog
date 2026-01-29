@@ -23,18 +23,21 @@ const localStorageMock = (() => {
   };
 })();
 
-Object.defineProperty(window, 'localStorage', {
-  value: localStorageMock,
-});
+// Only set up window mocks when running in jsdom/browser environment
+if (typeof window !== 'undefined') {
+  Object.defineProperty(window, 'localStorage', {
+    value: localStorageMock,
+  });
+
+  // Mock window.dispatchEvent for storage events
+  const originalDispatchEvent = window.dispatchEvent;
+  window.dispatchEvent = vi.fn((event: Event) => {
+    return originalDispatchEvent.call(window, event);
+  });
+}
 
 // Reset localStorage mock before each test
 beforeEach(() => {
   localStorageMock.clear();
   vi.clearAllMocks();
-});
-
-// Mock window.dispatchEvent for storage events
-const originalDispatchEvent = window.dispatchEvent;
-window.dispatchEvent = vi.fn((event: Event) => {
-  return originalDispatchEvent.call(window, event);
 });

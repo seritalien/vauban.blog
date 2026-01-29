@@ -23,6 +23,7 @@ import {
   getBlockNumber,
   disablePublishCooldown,
   getPublishCooldown,
+  ensureUnpaused,
   RPC_URL,
 } from './utils/blockchain';
 import type { Account } from 'starknet';
@@ -45,6 +46,9 @@ describe('Thread Posting E2E', () => {
     }
 
     account = getDeployerAccount();
+
+    // Ensure BlogRegistry is not paused (may be left paused by error-recovery tests)
+    await ensureUnpaused(account);
 
     // Disable cooldown for atomic thread posting tests
     const currentCooldown = await getPublishCooldown();

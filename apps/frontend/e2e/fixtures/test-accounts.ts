@@ -30,6 +30,20 @@ export const TEST_ACCOUNTS: TestAccount[] = [
   },
 ];
 
+export const USER_A: TestAccount = {
+  name: 'user_a',
+  address: '0x5e9e93c6235f8ae6c2f4f0069bd30753ec21b26fbad80cfbf5da2c1bc573d69',
+  privateKey: '0x11830d3641a682d4a690dcc25d1f4b0dac948325ac18f6dd32564371735f320',
+  publicKey: '0x11830d3641a682d4a690dcc25d1f4b0dac948325ac18f6dd32564371735f320',
+};
+
+export const USER_B: TestAccount = {
+  name: 'user_b',
+  address: '0x1f7cccfc0ae200cf667fe8c842ca24dfc8790409a04e217f0ffc2ad7def6bda',
+  privateKey: '0x7bec814b18b1d193eaa7cec41007e04bf0a98453b06ec7582aa29882c52eb7b',
+  publicKey: '0x7bec814b18b1d193eaa7cec41007e04bf0a98453b06ec7582aa29882c52eb7b',
+};
+
 export const DEPLOYER = TEST_ACCOUNTS[0];
 
 // Contract addresses from deployment
