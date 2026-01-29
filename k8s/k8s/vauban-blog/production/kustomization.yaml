@@ -28,5 +28,5 @@ commonLabels:
   environment: production
 
 images:
-  - name: ghcr.io/vauban/blog-frontend
-    newTag: latest  # Will be replaced by CI/CD
+  - name: ghcr.io/seritalien/vauban.blog/frontend
+    newTag: latest  # Updated by CI/CD on tag push

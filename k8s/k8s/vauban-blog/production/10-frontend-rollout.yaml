@@ -35,7 +35,7 @@ spec:
         - name: ghcr-secret
       containers:
         - name: frontend
-          image: ghcr.io/vauban/blog-frontend:latest
+          image: ghcr.io/seritalien/vauban.blog/frontend:latest
           imagePullPolicy: Always
           ports:
             - name: http
