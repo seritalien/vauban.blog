@@ -567,7 +567,7 @@ mod SessionKeyManager {
 // ============================================================================
 
 #[starknet::interface]
-trait ISessionKeyManager<TContractState> {
+pub trait ISessionKeyManager<TContractState> {
     // Session key management
     fn create_session_key(
         ref self: TContractState,

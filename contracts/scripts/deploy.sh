@@ -125,7 +125,7 @@ echo ""
 # ============================================================================
 
 echo "1/8  Deploying BlogRegistry..."
-BLOG_REGISTRY_ADDRESS=$(deploy_contract "BlogRegistry" "$DEPLOYER_ADDRESS $DEPLOYER_ADDRESS 250 60")
+BLOG_REGISTRY_ADDRESS=$(deploy_contract "BlogRegistry" "$DEPLOYER_ADDRESS $DEPLOYER_ADDRESS 250 0")
 if [ $? -ne 0 ]; then
     echo -e "${RED}Failed to deploy BlogRegistry${NC}"
     exit 1
@@ -181,7 +181,7 @@ fi
 
 echo ""
 echo "8/8  Deploying Treasury..."
-TREASURY_ADDRESS=$(deploy_contract "Treasury" "$DEPLOYER_ADDRESS 1000")
+TREASURY_ADDRESS=$(deploy_contract "Treasury" "$DEPLOYER_ADDRESS")
 if [ $? -ne 0 ]; then
     echo -e "${RED}Failed to deploy Treasury${NC}"
     exit 1

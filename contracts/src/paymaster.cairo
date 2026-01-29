@@ -528,7 +528,7 @@ mod Paymaster {
 use starknet::ContractAddress;
 
 #[starknet::interface]
-trait IPaymaster<TContractState> {
+pub trait IPaymaster<TContractState> {
     // Core sponsorship
     fn sponsor_transaction(
         ref self: TContractState,
