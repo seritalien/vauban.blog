@@ -14,6 +14,7 @@ import {
 import { useWallet } from '@/providers/wallet-provider';
 import { getProvider, roleRegistryAbi } from '@vauban/web3-utils';
 import { queryKeys } from '@/lib/query-keys';
+import { getPublicEnv } from '@/lib/public-env';
 
 // ============================================================================
 // ROLE REGISTRY CONTRACT CONFIGURATION
@@ -23,7 +24,7 @@ import { queryKeys } from '@/lib/query-keys';
  * Get RoleRegistry contract address from environment
  */
 function getRoleRegistryAddress(): string | null {
-  const address = process.env.NEXT_PUBLIC_ROLE_REGISTRY_ADDRESS;
+  const address = getPublicEnv('NEXT_PUBLIC_ROLE_REGISTRY_ADDRESS');
   return address || null;
 }
 

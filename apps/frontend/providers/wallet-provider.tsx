@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { connect, disconnect, StarknetWindowObject } from 'starknetkit';
 import { Account, RpcProvider, constants, AccountInterface } from 'starknet';
+import { getPublicEnv } from '@/lib/public-env';
 
 // ============================================================================
 // NETWORK CONFIGURATION
@@ -16,30 +17,32 @@ interface NetworkConfig {
   explorerUrl: string;
 }
 
-const NETWORKS: Record<NetworkId, NetworkConfig> = {
-  mainnet: {
-    chainId: constants.StarknetChainId.SN_MAIN,
-    name: 'Starknet Mainnet',
-    rpcUrl: process.env.NEXT_PUBLIC_MAINNET_RPC || 'https://starknet-mainnet.public.blastapi.io',
-    explorerUrl: 'https://starkscan.co',
-  },
-  sepolia: {
-    chainId: constants.StarknetChainId.SN_SEPOLIA,
-    name: 'Starknet Sepolia',
-    rpcUrl: process.env.NEXT_PUBLIC_SEPOLIA_RPC || 'https://starknet-sepolia.public.blastapi.io',
-    explorerUrl: 'https://sepolia.starkscan.co',
-  },
-  devnet: {
-    chainId: 'SN_DEVNET',
-    name: 'Local Devnet',
-    rpcUrl: '/api/rpc', // Proxy to avoid CORS
-    explorerUrl: '',
-  },
-};
+function getNetworks(): Record<NetworkId, NetworkConfig> {
+  return {
+    mainnet: {
+      chainId: constants.StarknetChainId.SN_MAIN,
+      name: 'Starknet Mainnet',
+      rpcUrl: getPublicEnv('NEXT_PUBLIC_MAINNET_RPC') || 'https://starknet-mainnet.public.blastapi.io',
+      explorerUrl: 'https://starkscan.co',
+    },
+    sepolia: {
+      chainId: constants.StarknetChainId.SN_SEPOLIA,
+      name: 'Starknet Sepolia',
+      rpcUrl: getPublicEnv('NEXT_PUBLIC_SEPOLIA_RPC') || 'https://starknet-sepolia.public.blastapi.io',
+      explorerUrl: 'https://sepolia.starkscan.co',
+    },
+    devnet: {
+      chainId: 'SN_DEVNET',
+      name: 'Local Devnet',
+      rpcUrl: '/api/rpc', // Proxy to avoid CORS
+      explorerUrl: '',
+    },
+  };
+}
 
 // Determine network from env
 function getNetworkFromEnv(): NetworkId {
-  const networkEnv = process.env.NEXT_PUBLIC_STARKNET_NETWORK?.toLowerCase();
+  const networkEnv = getPublicEnv('NEXT_PUBLIC_STARKNET_NETWORK')?.toLowerCase();
   if (networkEnv === 'mainnet') return 'mainnet';
   if (networkEnv === 'sepolia') return 'sepolia';
   return 'devnet';
@@ -102,7 +105,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [isDevMode, setIsDevMode] = useState(false);
   const [network, setNetwork] = useState<NetworkId>(getNetworkFromEnv());
 
-  const networkConfig = NETWORKS[network];
+  const networkConfig = getNetworks()[network];
 
   // Get explorer URLs
   const getExplorerUrl = useCallback((txHash: string) => {
@@ -123,7 +126,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const provider = new RpcProvider({ nodeUrl: NETWORKS.devnet.rpcUrl });
+    const provider = new RpcProvider({ nodeUrl: getNetworks().devnet.rpcUrl });
     const acc = new Account(
       provider,
       devAccount.address,
@@ -200,7 +203,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('wallet_network', detectedNetwork);
       }
 
-      console.log(`Connected to ${walletAny.name || 'wallet'} on ${NETWORKS[detectedNetwork].name}: ${walletAddress}`);
+      console.log(`Connected to ${walletAny.name || 'wallet'} on ${getNetworks()[detectedNetwork].name}: ${walletAddress}`);
     } catch (error) {
       console.error('Failed to connect wallet:', error);
       throw error;
@@ -241,7 +244,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       connectDevAccount(0);
     } else {
       // For mainnet/sepolia, user needs to reconnect with correct network in wallet
-      console.log(`To switch to ${NETWORKS[newNetwork].name}, please change network in your wallet and reconnect.`);
+      console.log(`To switch to ${getNetworks()[newNetwork].name}, please change network in your wallet and reconnect.`);
     }
   }, [isDevMode, disconnectWallet, connectDevAccount]);
 
@@ -302,4 +305,4 @@ export function useWallet() {
 }
 
 // Export network config for use elsewhere
-export { NETWORKS, type NetworkId, type NetworkConfig };
+export { getNetworks, type NetworkId, type NetworkConfig };

@@ -6,6 +6,7 @@ import { useWallet } from '@/providers/wallet-provider';
 import { ec, Contract } from 'starknet';
 import { getProvider } from '@vauban/web3-utils';
 import { queryKeys } from '@/lib/query-keys';
+import { getPublicEnv } from '@/lib/public-env';
 
 interface SessionKeyData {
   publicKey: string;
@@ -28,9 +29,9 @@ interface UseSessionKeyReturn {
 const SESSION_KEY_STORAGE_PREFIX = 'vauban_session_key_';
 const DEFAULT_EXPIRY_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
 
-// Contract addresses from env
-const SESSION_KEY_MANAGER_ADDRESS = process.env.NEXT_PUBLIC_SESSION_KEY_MANAGER_ADDRESS;
-const SOCIAL_ADDRESS = process.env.NEXT_PUBLIC_SOCIAL_ADDRESS;
+// Contract addresses from env (runtime-injected for K8s deployments)
+const SESSION_KEY_MANAGER_ADDRESS = getPublicEnv('NEXT_PUBLIC_SESSION_KEY_MANAGER_ADDRESS');
+const SOCIAL_ADDRESS = getPublicEnv('NEXT_PUBLIC_SOCIAL_ADDRESS');
 
 // ============================================================================
 // DATA FETCHING

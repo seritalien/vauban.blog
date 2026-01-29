@@ -4,6 +4,7 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { PostOutput } from '@vauban/shared-types';
 import { getPosts, getPost, getPostCount, initStarknetProvider, setContractAddresses, calculateContentHash } from '@vauban/web3-utils';
 import { queryKeys } from '@/lib/query-keys';
+import { getPublicEnv } from '@/lib/public-env';
 
 // Extended post type with verification status
 export interface VerifiedPost extends PostOutput {
@@ -84,10 +85,10 @@ if (typeof window !== 'undefined') {
   });
 
   setContractAddresses({
-    blogRegistry: process.env.NEXT_PUBLIC_BLOG_REGISTRY_ADDRESS,
-    social: process.env.NEXT_PUBLIC_SOCIAL_ADDRESS,
-    paymaster: process.env.NEXT_PUBLIC_PAYMASTER_ADDRESS,
-    sessionKeyManager: process.env.NEXT_PUBLIC_SESSION_KEY_MANAGER_ADDRESS,
+    blogRegistry: getPublicEnv('NEXT_PUBLIC_BLOG_REGISTRY_ADDRESS'),
+    social: getPublicEnv('NEXT_PUBLIC_SOCIAL_ADDRESS'),
+    paymaster: getPublicEnv('NEXT_PUBLIC_PAYMASTER_ADDRESS'),
+    sessionKeyManager: getPublicEnv('NEXT_PUBLIC_SESSION_KEY_MANAGER_ADDRESS'),
   });
 }
 

@@ -76,6 +76,20 @@ export default function RootLayout({
       <head>
         <meta name="theme-color" content="#6366f1" />
         <link rel="apple-touch-icon" href="/icons/icon.svg" />
+        {/* Inject NEXT_PUBLIC_* env vars for client-side runtime access.
+            Next.js inlines these at build time, but Docker/K8s images are built
+            without them — this script makes them available at runtime. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__ENV__=${JSON.stringify(
+              Object.fromEntries(
+                Object.entries(process.env)
+                  .filter(([key]) => key.startsWith('NEXT_PUBLIC_'))
+                  .filter(([, value]) => value !== undefined && value !== '')
+              )
+            )};`,
+          }}
+        />
       </head>
       <body className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors">
         <ServiceWorkerRegistration />

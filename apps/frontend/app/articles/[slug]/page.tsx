@@ -18,6 +18,7 @@ import { generateArticleJsonLd, generateBreadcrumbJsonLd } from '@/lib/seo';
 import ReadingProgress from '@/components/article/ReadingProgress';
 import ArticleContent from '@/components/article/ArticleContent';
 import Image from 'next/image';
+import { getPublicEnv } from '@/lib/public-env';
 
 // Dynamic imports for heavy components (reduces initial bundle by ~200KB)
 const CommentSection = nextDynamic(() => import('@/components/comments/CommentSection'), { ssr: false });
@@ -67,7 +68,7 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
   }
 
   // Generate SEO data
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://vauban.blog';
+  const siteUrl = getPublicEnv('NEXT_PUBLIC_SITE_URL') || 'https://vauban.blog';
   const articleUrl = `${siteUrl}/articles/${postId}`;
   const authorName = getDisplayName(post.author, authorProfile);
 
@@ -238,7 +239,7 @@ export default function ArticlePage({ params }: { params: Promise<{ slug: string
           <div>
             <span className="font-semibold">IPFS:</span>{' '}
             <a
-              href={`${process.env.NEXT_PUBLIC_IPFS_GATEWAY_URL || 'http://localhost:8005'}/ipfs/${post.ipfsCid}`}
+              href={`${getPublicEnv('NEXT_PUBLIC_IPFS_GATEWAY_URL') || 'http://localhost:8005'}/ipfs/${post.ipfsCid}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-600 dark:text-blue-400 hover:underline"

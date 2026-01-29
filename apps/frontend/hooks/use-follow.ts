@@ -6,6 +6,7 @@ import { Contract, Account } from 'starknet';
 import { useWallet } from '@/providers/wallet-provider';
 import { getProvider, initStarknetProvider, followsAbi } from '@vauban/web3-utils';
 import { queryKeys } from '@/lib/query-keys';
+import { getPublicEnv } from '@/lib/public-env';
 
 // Ensure provider uses the Next.js RPC proxy (avoids CORS with direct RPC)
 if (typeof window !== 'undefined') {
@@ -17,7 +18,7 @@ if (typeof window !== 'undefined') {
 // ============================================================================
 
 function getFollowsAddress(): string | null {
-  const address = process.env.NEXT_PUBLIC_FOLLOWS_ADDRESS;
+  const address = getPublicEnv('NEXT_PUBLIC_FOLLOWS_ADDRESS');
   return address || null;
 }
 
