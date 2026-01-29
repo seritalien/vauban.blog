@@ -468,7 +468,7 @@ mod Follows {
 use starknet::ContractAddress;
 
 #[starknet::interface]
-trait IFollows<TContractState> {
+pub trait IFollows<TContractState> {
     // User functions
     fn follow(ref self: TContractState, user_to_follow: ContractAddress) -> bool;
     fn unfollow(ref self: TContractState, user_to_unfollow: ContractAddress) -> bool;

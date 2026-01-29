@@ -121,10 +121,10 @@ echo "🔑 Deployer address: $DEPLOYER_ADDRESS"
 echo ""
 
 # ============================================================================
-# DEPLOY CONTRACTS
+# DEPLOY CONTRACTS (8 total)
 # ============================================================================
 
-echo "1️⃣  Deploying BlogRegistry..."
+echo "1/8  Deploying BlogRegistry..."
 BLOG_REGISTRY_ADDRESS=$(deploy_contract "BlogRegistry" "$DEPLOYER_ADDRESS $DEPLOYER_ADDRESS 250 60")
 if [ $? -ne 0 ]; then
     echo -e "${RED}Failed to deploy BlogRegistry${NC}"
@@ -132,7 +132,7 @@ if [ $? -ne 0 ]; then
 fi
 
 echo ""
-echo "2️⃣  Deploying Social..."
+echo "2/8  Deploying Social..."
 SOCIAL_ADDRESS=$(deploy_contract "Social" "$DEPLOYER_ADDRESS")
 if [ $? -ne 0 ]; then
     echo -e "${RED}Failed to deploy Social${NC}"
@@ -140,7 +140,7 @@ if [ $? -ne 0 ]; then
 fi
 
 echo ""
-echo "3️⃣  Deploying Paymaster..."
+echo "3/8  Deploying Paymaster..."
 PAYMASTER_ADDRESS=$(deploy_contract "Paymaster" "$DEPLOYER_ADDRESS $DEPLOYER_ADDRESS 100000000000000000000 1000000000000000000")
 if [ $? -ne 0 ]; then
     echo -e "${RED}Failed to deploy Paymaster${NC}"
@@ -148,10 +148,42 @@ if [ $? -ne 0 ]; then
 fi
 
 echo ""
-echo "4️⃣  Deploying SessionKeyManager..."
+echo "4/8  Deploying SessionKeyManager..."
 SESSION_KEY_MANAGER_ADDRESS=$(deploy_contract "SessionKeyManager" "$DEPLOYER_ADDRESS")
 if [ $? -ne 0 ]; then
     echo -e "${RED}Failed to deploy SessionKeyManager${NC}"
+    exit 1
+fi
+
+echo ""
+echo "5/8  Deploying RoleRegistry..."
+ROLE_REGISTRY_ADDRESS=$(deploy_contract "RoleRegistry" "$DEPLOYER_ADDRESS")
+if [ $? -ne 0 ]; then
+    echo -e "${RED}Failed to deploy RoleRegistry${NC}"
+    exit 1
+fi
+
+echo ""
+echo "6/8  Deploying Follows..."
+FOLLOWS_ADDRESS=$(deploy_contract "Follows" "$DEPLOYER_ADDRESS")
+if [ $? -ne 0 ]; then
+    echo -e "${RED}Failed to deploy Follows${NC}"
+    exit 1
+fi
+
+echo ""
+echo "7/8  Deploying Reputation..."
+REPUTATION_ADDRESS=$(deploy_contract "Reputation" "$DEPLOYER_ADDRESS")
+if [ $? -ne 0 ]; then
+    echo -e "${RED}Failed to deploy Reputation${NC}"
+    exit 1
+fi
+
+echo ""
+echo "8/8  Deploying Treasury..."
+TREASURY_ADDRESS=$(deploy_contract "Treasury" "$DEPLOYER_ADDRESS 1000")
+if [ $? -ne 0 ]; then
+    echo -e "${RED}Failed to deploy Treasury${NC}"
     exit 1
 fi
 
@@ -167,16 +199,37 @@ echo "   Whitelisting Social contract in Paymaster..."
 starkli invoke "$PAYMASTER_ADDRESS" whitelist_contract "$SOCIAL_ADDRESS" \
     --rpc "$RPC_URL" \
     --account "$ACCOUNT_FILE" \
-    --watch > /dev/null 2>&1 || echo -e "${YELLOW}   ⚠️  Failed to whitelist${NC}"
+    --watch > /dev/null 2>&1 || echo -e "${YELLOW}   Warning: Failed to whitelist Social in Paymaster${NC}"
 
-# Fund Paymaster with initial balance
-echo "   Funding Paymaster (simulated - requires ERC20 integration)..."
-# starkli invoke "$PAYMASTER_ADDRESS" fund 1000000000000000000000 \
-#     --rpc "$RPC_URL" \
-#     --account "$ACCOUNT_FILE" \
-#     --watch
+# Set session key manager in Social
+echo "   Setting SessionKeyManager in Social..."
+starkli invoke "$SOCIAL_ADDRESS" set_session_key_manager "$SESSION_KEY_MANAGER_ADDRESS" \
+    --rpc "$RPC_URL" \
+    --account "$ACCOUNT_FILE" \
+    --watch > /dev/null 2>&1 || echo -e "${YELLOW}   Warning: Failed to set SessionKeyManager in Social${NC}"
 
-echo -e "${GREEN}   ✅ Configuration complete${NC}"
+# Authorize BlogRegistry in Reputation (for increment_approved_posts -> reputation tracking)
+echo "   Authorizing BlogRegistry in Reputation..."
+starkli invoke "$REPUTATION_ADDRESS" authorize_contract "$BLOG_REGISTRY_ADDRESS" \
+    --rpc "$RPC_URL" \
+    --account "$ACCOUNT_FILE" \
+    --watch > /dev/null 2>&1 || echo -e "${YELLOW}   Warning: Failed to authorize BlogRegistry in Reputation${NC}"
+
+# Authorize Social in Reputation (for comment/like reputation tracking)
+echo "   Authorizing Social in Reputation..."
+starkli invoke "$REPUTATION_ADDRESS" authorize_contract "$SOCIAL_ADDRESS" \
+    --rpc "$RPC_URL" \
+    --account "$ACCOUNT_FILE" \
+    --watch > /dev/null 2>&1 || echo -e "${YELLOW}   Warning: Failed to authorize Social in Reputation${NC}"
+
+# Authorize BlogRegistry in Treasury (for payment distribution)
+echo "   Authorizing BlogRegistry in Treasury..."
+starkli invoke "$TREASURY_ADDRESS" authorize_contract "$BLOG_REGISTRY_ADDRESS" \
+    --rpc "$RPC_URL" \
+    --account "$ACCOUNT_FILE" \
+    --watch > /dev/null 2>&1 || echo -e "${YELLOW}   Warning: Failed to authorize BlogRegistry in Treasury${NC}"
+
+echo -e "${GREEN}   Configuration complete${NC}"
 
 # ============================================================================
 # SAVE DEPLOYMENT INFO
@@ -192,7 +245,11 @@ cat > "$DEPLOYMENT_FILE" <<EOF
     "BlogRegistry": "$BLOG_REGISTRY_ADDRESS",
     "Social": "$SOCIAL_ADDRESS",
     "Paymaster": "$PAYMASTER_ADDRESS",
-    "SessionKeyManager": "$SESSION_KEY_MANAGER_ADDRESS"
+    "SessionKeyManager": "$SESSION_KEY_MANAGER_ADDRESS",
+    "RoleRegistry": "$ROLE_REGISTRY_ADDRESS",
+    "Follows": "$FOLLOWS_ADDRESS",
+    "Reputation": "$REPUTATION_ADDRESS",
+    "Treasury": "$TREASURY_ADDRESS"
   }
 }
 EOF
@@ -212,6 +269,10 @@ NEXT_PUBLIC_BLOG_REGISTRY_ADDRESS=$BLOG_REGISTRY_ADDRESS
 NEXT_PUBLIC_SOCIAL_ADDRESS=$SOCIAL_ADDRESS
 NEXT_PUBLIC_PAYMASTER_ADDRESS=$PAYMASTER_ADDRESS
 NEXT_PUBLIC_SESSION_KEY_MANAGER_ADDRESS=$SESSION_KEY_MANAGER_ADDRESS
+NEXT_PUBLIC_ROLE_REGISTRY_ADDRESS=$ROLE_REGISTRY_ADDRESS
+NEXT_PUBLIC_FOLLOWS_ADDRESS=$FOLLOWS_ADDRESS
+NEXT_PUBLIC_REPUTATION_ADDRESS=$REPUTATION_ADDRESS
+NEXT_PUBLIC_TREASURY_ADDRESS=$TREASURY_ADDRESS
 NEXT_PUBLIC_CHAIN_ID=VAUBAN_DEV
 EOF
 
@@ -226,12 +287,16 @@ echo "=========================================="
 echo -e "${GREEN}✅ Deployment Complete!${NC}"
 echo "=========================================="
 echo ""
-echo "📋 Deployed Contracts:"
-echo "   • BlogRegistry:       $BLOG_REGISTRY_ADDRESS"
-echo "   • Social:             $SOCIAL_ADDRESS"
-echo "   • Paymaster:          $PAYMASTER_ADDRESS"
-echo "   • SessionKeyManager:  $SESSION_KEY_MANAGER_ADDRESS"
+echo "Deployed Contracts:"
+echo "   BlogRegistry:       $BLOG_REGISTRY_ADDRESS"
+echo "   Social:             $SOCIAL_ADDRESS"
+echo "   Paymaster:          $PAYMASTER_ADDRESS"
+echo "   SessionKeyManager:  $SESSION_KEY_MANAGER_ADDRESS"
+echo "   RoleRegistry:       $ROLE_REGISTRY_ADDRESS"
+echo "   Follows:            $FOLLOWS_ADDRESS"
+echo "   Reputation:         $REPUTATION_ADDRESS"
+echo "   Treasury:           $TREASURY_ADDRESS"
 echo ""
-echo "🔍 Verify deployment:"
+echo "Verify deployment:"
 echo "   starkli call $BLOG_REGISTRY_ADDRESS get_post_count --rpc $RPC_URL"
 echo ""

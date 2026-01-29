@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback } from 'react';
 import { Contract } from 'starknet';
 import {
   ROLES,
@@ -11,7 +12,8 @@ import {
   type UserRole,
 } from '@vauban/shared-types';
 import { useWallet } from '@/providers/wallet-provider';
-import { getProvider } from '@vauban/web3-utils';
+import { getProvider, roleRegistryAbi } from '@vauban/web3-utils';
+import { queryKeys } from '@/lib/query-keys';
 
 // ============================================================================
 // ROLE REGISTRY CONTRACT CONFIGURATION
@@ -26,37 +28,9 @@ function getRoleRegistryAddress(): string | null {
 }
 
 /**
- * Minimal ABI for RoleRegistry read functions
- * Full ABI will be generated when contract is deployed
+ * RoleRegistry ABI from @vauban/web3-utils (generated from Cairo contract)
  */
-const ROLE_REGISTRY_ABI = [
-  {
-    name: 'get_user_role',
-    type: 'function',
-    inputs: [{ name: 'user', type: 'felt' }],
-    outputs: [
-      {
-        name: 'role',
-        type: '(felt, u8, u64, felt, u32, u64, bool)',
-      },
-    ],
-    state_mutability: 'view',
-  },
-  {
-    name: 'is_registered',
-    type: 'function',
-    inputs: [{ name: 'user', type: 'felt' }],
-    outputs: [{ name: 'registered', type: 'bool' }],
-    state_mutability: 'view',
-  },
-  {
-    name: 'get_role_level',
-    type: 'function',
-    inputs: [{ name: 'user', type: 'felt' }],
-    outputs: [{ name: 'level', type: 'u8' }],
-    state_mutability: 'view',
-  },
-] as const;
+const ROLE_REGISTRY_ABI = roleRegistryAbi;
 
 // ============================================================================
 // HOOK TYPES
@@ -82,8 +56,89 @@ export interface UseRoleResult {
 }
 
 // ============================================================================
+// DATA FETCHING
+// ============================================================================
+
+interface RoleData {
+  roleLevel: RoleLevel;
+  userRole: UserRole | null;
+  isRegistered: boolean;
+}
+
+/**
+ * Fetch role data for an address from the RoleRegistry contract.
+ * Handles the nested try/catch fallback pattern:
+ * get_user_role → get_role_level → default READER
+ */
+async function fetchRoleData(address: string): Promise<RoleData> {
+  const contractAddress = getRoleRegistryAddress();
+
+  // If contract not deployed, default to READER
+  if (!contractAddress) {
+    return { roleLevel: ROLES.READER, userRole: null, isRegistered: false };
+  }
+
+  const provider = getProvider();
+  const contract = new Contract(ROLE_REGISTRY_ABI, contractAddress, provider);
+
+  // First check if user is registered
+  let isRegistered = false;
+  try {
+    const registered = await contract.is_registered(address);
+    isRegistered = Boolean(registered);
+
+    if (!registered) {
+      return { roleLevel: ROLES.READER, userRole: null, isRegistered: false };
+    }
+  } catch (regErr) {
+    // If is_registered fails, try to get role directly
+    console.warn('is_registered call failed, trying get_role_level:', regErr);
+  }
+
+  // Get the full user role data
+  try {
+    const result = await contract.get_user_role(address);
+
+    // Parse the result tuple
+    const level = Number(result.role || result[1] || 0);
+    const safeLevel = Math.min(Math.max(level, 0), 6) as RoleLevel;
+
+    return {
+      roleLevel: safeLevel,
+      isRegistered: true,
+      userRole: {
+        user: address,
+        role: safeLevel,
+        grantedAt: Number(result.granted_at || result[2] || 0),
+        grantedBy: String(result.granted_by || result[3] || '0x0'),
+        approvedPosts: Number(result.approved_posts || result[4] || 0),
+        reputation: BigInt(result.reputation || result[5] || 0).toString(),
+        isActive: Boolean(result.is_active ?? result[6] ?? true),
+      },
+    };
+  } catch (roleErr) {
+    // Fallback: try simple get_role_level
+    try {
+      const level = await contract.get_role_level(address);
+      const safeLevel = Math.min(Math.max(Number(level), 0), 6) as RoleLevel;
+      return { roleLevel: safeLevel, userRole: null, isRegistered: isRegistered };
+    } catch {
+      // Contract call failed, default to READER
+      console.warn('Failed to get role, defaulting to READER:', roleErr);
+      return { roleLevel: ROLES.READER, userRole: null, isRegistered: false };
+    }
+  }
+}
+
+// ============================================================================
 // HOOK IMPLEMENTATION
 // ============================================================================
+
+const DEFAULT_ROLE_DATA: RoleData = {
+  roleLevel: ROLES.READER,
+  userRole: null,
+  isRegistered: false,
+};
 
 /**
  * Hook to get the current user's role from the RoleRegistry contract
@@ -101,117 +156,35 @@ export interface UseRoleResult {
  */
 export function useRole(): UseRoleResult {
   const { address, isConnected } = useWallet();
+  const queryClient = useQueryClient();
 
-  const [roleLevel, setRoleLevel] = useState<RoleLevel>(ROLES.READER);
-  const [userRole, setUserRole] = useState<UserRole | null>(null);
-  const [isRegistered, setIsRegistered] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const enabled = Boolean(isConnected && address);
 
-  const fetchRole = useCallback(async () => {
-    // Reset to READER if not connected
-    if (!isConnected || !address) {
-      setRoleLevel(ROLES.READER);
-      setUserRole(null);
-      setIsRegistered(false);
-      setError(null);
-      return;
+  const { data = DEFAULT_ROLE_DATA, isLoading, error: queryError } = useQuery({
+    queryKey: queryKeys.role.user(address ?? ''),
+    queryFn: () => fetchRoleData(address!),
+    enabled,
+    staleTime: 60_000, // role changes rarely
+  });
+
+  const roleLevel = enabled ? data.roleLevel : ROLES.READER;
+  const error = queryError instanceof Error ? queryError.message : queryError ? String(queryError) : null;
+
+  const refresh = useCallback(async () => {
+    if (address) {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.role.user(address) });
     }
-
-    const contractAddress = getRoleRegistryAddress();
-
-    // If contract not deployed, default to READER
-    if (!contractAddress) {
-      setRoleLevel(ROLES.READER);
-      setUserRole(null);
-      setIsRegistered(false);
-      setError(null);
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const provider = getProvider();
-      const contract = new Contract(ROLE_REGISTRY_ABI as any, contractAddress, provider);
-
-      // First check if user is registered
-      try {
-        const registered = await contract.is_registered(address);
-        setIsRegistered(Boolean(registered));
-
-        if (!registered) {
-          // Not registered = READER role
-          setRoleLevel(ROLES.READER);
-          setUserRole(null);
-          return;
-        }
-      } catch (regErr) {
-        // If is_registered fails, try to get role directly
-        console.warn('is_registered call failed, trying get_role_level:', regErr);
-      }
-
-      // Get the full user role data
-      try {
-        const result = await contract.get_user_role(address);
-
-        // Parse the result tuple
-        // Expected: (user, role, granted_at, granted_by, approved_posts, reputation, is_active)
-        const level = Number(result.role || result[1] || 0);
-        const safeLevel = Math.min(Math.max(level, 0), 6) as RoleLevel;
-
-        setRoleLevel(safeLevel);
-        setIsRegistered(true);
-        setUserRole({
-          user: address,
-          role: safeLevel,
-          grantedAt: Number(result.granted_at || result[2] || 0),
-          grantedBy: String(result.granted_by || result[3] || '0x0'),
-          approvedPosts: Number(result.approved_posts || result[4] || 0),
-          reputation: BigInt(result.reputation || result[5] || 0).toString(),
-          isActive: Boolean(result.is_active ?? result[6] ?? true),
-        });
-      } catch (roleErr) {
-        // Fallback: try simple get_role_level
-        try {
-          const level = await contract.get_role_level(address);
-          const safeLevel = Math.min(Math.max(Number(level), 0), 6) as RoleLevel;
-          setRoleLevel(safeLevel);
-          setUserRole(null);
-        } catch {
-          // Contract call failed, default to READER
-          console.warn('Failed to get role, defaulting to READER:', roleErr);
-          setRoleLevel(ROLES.READER);
-          setUserRole(null);
-        }
-      }
-    } catch (err) {
-      console.error('Error fetching role:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch role');
-      // Default to READER on error
-      setRoleLevel(ROLES.READER);
-      setUserRole(null);
-      setIsRegistered(false);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [address, isConnected]);
-
-  // Fetch role on mount and when address changes
-  useEffect(() => {
-    fetchRole();
-  }, [fetchRole]);
+  }, [address, queryClient]);
 
   return {
     roleLevel,
     roleName: ROLE_NAMES[roleLevel],
     roleLabel: ROLE_LABELS[roleLevel],
-    userRole,
-    isRegistered,
+    userRole: enabled ? data.userRole : null,
+    isRegistered: enabled ? data.isRegistered : false,
     isLoading,
     error,
-    refresh: fetchRole,
+    refresh,
   };
 }
 
@@ -221,68 +194,35 @@ export function useRole(): UseRoleResult {
  * @param address - The address to check
  */
 export function useUserRole(address: string | null | undefined): UseRoleResult {
-  const [roleLevel, setRoleLevel] = useState<RoleLevel>(ROLES.READER);
-  const [userRole, setUserRole] = useState<UserRole | null>(null);
-  const [isRegistered, setIsRegistered] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const fetchRole = useCallback(async () => {
-    if (!address) {
-      setRoleLevel(ROLES.READER);
-      setUserRole(null);
-      setIsRegistered(false);
-      setError(null);
-      return;
+  const enabled = Boolean(address);
+
+  const { data = DEFAULT_ROLE_DATA, isLoading, error: queryError } = useQuery({
+    queryKey: queryKeys.role.user(address ?? ''),
+    queryFn: () => fetchRoleData(address!),
+    enabled,
+    staleTime: 60_000,
+  });
+
+  const roleLevel = enabled ? data.roleLevel : ROLES.READER;
+  const error = queryError instanceof Error ? queryError.message : queryError ? String(queryError) : null;
+
+  const refresh = useCallback(async () => {
+    if (address) {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.role.user(address) });
     }
-
-    const contractAddress = getRoleRegistryAddress();
-
-    if (!contractAddress) {
-      setRoleLevel(ROLES.READER);
-      setUserRole(null);
-      setIsRegistered(false);
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const provider = getProvider();
-      const contract = new Contract(ROLE_REGISTRY_ABI as any, contractAddress, provider);
-
-      // Get role level
-      const level = await contract.get_role_level(address);
-      const safeLevel = Math.min(Math.max(Number(level), 0), 6) as RoleLevel;
-
-      setRoleLevel(safeLevel);
-      setIsRegistered(safeLevel > ROLES.READER);
-      setUserRole(null); // Full user role requires additional call
-    } catch (err) {
-      console.error('Error fetching user role:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch role');
-      setRoleLevel(ROLES.READER);
-      setUserRole(null);
-      setIsRegistered(false);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [address]);
-
-  useEffect(() => {
-    fetchRole();
-  }, [fetchRole]);
+  }, [address, queryClient]);
 
   return {
     roleLevel,
     roleName: ROLE_NAMES[roleLevel],
     roleLabel: ROLE_LABELS[roleLevel],
-    userRole,
-    isRegistered,
+    userRole: enabled ? data.userRole : null,
+    isRegistered: enabled ? data.isRegistered : false,
     isLoading,
     error,
-    refresh: fetchRole,
+    refresh,
   };
 }
 

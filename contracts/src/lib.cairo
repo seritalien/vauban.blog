@@ -1,8 +1,8 @@
-mod blog_registry;
-mod social;
-mod paymaster;
-mod session_key_manager;
-mod role_registry;
-mod treasury;
-mod reputation;
-mod follows;
+pub mod blog_registry;
+pub mod social;
+pub mod paymaster;
+pub mod session_key_manager;
+pub mod role_registry;
+pub mod treasury;
+pub mod reputation;
+pub mod follows;

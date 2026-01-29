@@ -88,6 +88,8 @@ export {
   publishReply,
   startThread,
   continueThread,
+  continueThreadBatch,
+  publishThreadAtomic,
   pinPost,
   unpinPost,
   getPinnedPost,
@@ -148,3 +150,4 @@ export {
 
 // Contract ABIs (for direct Contract usage)
 export { default as followsAbi } from './abis/follows.json';
+export { default as roleRegistryAbi } from './abis/role_registry.json';

@@ -1,0 +1,762 @@
+{
+  "abi": [
+    {
+      "type": "impl",
+      "name": "TreasuryImpl",
+      "interface_name": "vauban_blog::treasury::ITreasury"
+    },
+    {
+      "type": "struct",
+      "name": "core::integer::u256",
+      "members": [
+        {
+          "name": "low",
+          "type": "core::integer::u128"
+        },
+        {
+          "name": "high",
+          "type": "core::integer::u128"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "vauban_blog::treasury::Earnings",
+      "members": [
+        {
+          "name": "total_earned",
+          "type": "core::integer::u256"
+        },
+        {
+          "name": "total_withdrawn",
+          "type": "core::integer::u256"
+        },
+        {
+          "name": "pending",
+          "type": "core::integer::u256"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "vauban_blog::treasury::PaymentRecord",
+      "members": [
+        {
+          "name": "id",
+          "type": "core::integer::u64"
+        },
+        {
+          "name": "post_id",
+          "type": "core::integer::u64"
+        },
+        {
+          "name": "payer",
+          "type": "core::starknet::contract_address::ContractAddress"
+        },
+        {
+          "name": "amount",
+          "type": "core::integer::u256"
+        },
+        {
+          "name": "author_share",
+          "type": "core::integer::u256"
+        },
+        {
+          "name": "platform_share",
+          "type": "core::integer::u256"
+        },
+        {
+          "name": "referrer_share",
+          "type": "core::integer::u256"
+        },
+        {
+          "name": "referrer",
+          "type": "core::starknet::contract_address::ContractAddress"
+        },
+        {
+          "name": "timestamp",
+          "type": "core::integer::u64"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "vauban_blog::treasury::RevenueConfig",
+      "members": [
+        {
+          "name": "platform_fee_bps",
+          "type": "core::integer::u16"
+        },
+        {
+          "name": "referral_fee_bps",
+          "type": "core::integer::u16"
+        },
+        {
+          "name": "min_withdrawal",
+          "type": "core::integer::u256"
+        }
+      ]
+    },
+    {
+      "type": "enum",
+      "name": "core::bool",
+      "variants": [
+        {
+          "name": "False",
+          "type": "()"
+        },
+        {
+          "name": "True",
+          "type": "()"
+        }
+      ]
+    },
+    {
+      "type": "interface",
+      "name": "vauban_blog::treasury::ITreasury",
+      "items": [
+        {
+          "type": "function",
+          "name": "distribute_payment",
+          "inputs": [
+            {
+              "name": "post_id",
+              "type": "core::integer::u64"
+            },
+            {
+              "name": "author",
+              "type": "core::starknet::contract_address::ContractAddress"
+            },
+            {
+              "name": "amount",
+              "type": "core::integer::u256"
+            },
+            {
+              "name": "payer",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "withdraw_earnings",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "core::integer::u256"
+            }
+          ],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "set_revenue_split",
+          "inputs": [
+            {
+              "name": "post_id",
+              "type": "core::integer::u64"
+            },
+            {
+              "name": "collaborators",
+              "type": "core::array::Array::<(core::starknet::contract_address::ContractAddress, core::integer::u16)>"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "set_referrer",
+          "inputs": [
+            {
+              "name": "referrer",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "get_referrer",
+          "inputs": [
+            {
+              "name": "user",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_earnings",
+          "inputs": [
+            {
+              "name": "user",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "vauban_blog::treasury::Earnings"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_payment",
+          "inputs": [
+            {
+              "name": "payment_id",
+              "type": "core::integer::u64"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "vauban_blog::treasury::PaymentRecord"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_payment_count",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "core::integer::u64"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_config",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "vauban_blog::treasury::RevenueConfig"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_platform_balance",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "core::integer::u256"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_total_volume",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "core::integer::u256"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_total_distributed_to_creators",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "core::integer::u256"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_total_platform_fees",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "core::integer::u256"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_total_referral_fees",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "core::integer::u256"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "update_config",
+          "inputs": [
+            {
+              "name": "platform_fee_bps",
+              "type": "core::integer::u16"
+            },
+            {
+              "name": "referral_fee_bps",
+              "type": "core::integer::u16"
+            },
+            {
+              "name": "min_withdrawal",
+              "type": "core::integer::u256"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "authorize_contract",
+          "inputs": [
+            {
+              "name": "contract_address",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "deauthorize_contract",
+          "inputs": [
+            {
+              "name": "contract_address",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "is_authorized",
+          "inputs": [
+            {
+              "name": "contract_address",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "core::bool"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "add_admin",
+          "inputs": [
+            {
+              "name": "admin",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "remove_admin",
+          "inputs": [
+            {
+              "name": "admin",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "is_admin",
+          "inputs": [
+            {
+              "name": "account",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "core::bool"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "withdraw_platform_fees",
+          "inputs": [
+            {
+              "name": "recipient",
+              "type": "core::starknet::contract_address::ContractAddress"
+            },
+            {
+              "name": "amount",
+              "type": "core::integer::u256"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "pause",
+          "inputs": [],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "unpause",
+          "inputs": [],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "is_paused",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "core::bool"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "get_owner",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "transfer_ownership",
+          "inputs": [
+            {
+              "name": "new_owner",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        }
+      ]
+    },
+    {
+      "type": "constructor",
+      "name": "constructor",
+      "inputs": [
+        {
+          "name": "owner",
+          "type": "core::starknet::contract_address::ContractAddress"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::treasury::Treasury::PaymentDistributed",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "payment_id",
+          "type": "core::integer::u64",
+          "kind": "key"
+        },
+        {
+          "name": "post_id",
+          "type": "core::integer::u64",
+          "kind": "key"
+        },
+        {
+          "name": "payer",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "key"
+        },
+        {
+          "name": "amount",
+          "type": "core::integer::u256",
+          "kind": "data"
+        },
+        {
+          "name": "author_share",
+          "type": "core::integer::u256",
+          "kind": "data"
+        },
+        {
+          "name": "platform_share",
+          "type": "core::integer::u256",
+          "kind": "data"
+        },
+        {
+          "name": "referrer_share",
+          "type": "core::integer::u256",
+          "kind": "data"
+        },
+        {
+          "name": "timestamp",
+          "type": "core::integer::u64",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::treasury::Treasury::EarningsWithdrawn",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "user",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "key"
+        },
+        {
+          "name": "amount",
+          "type": "core::integer::u256",
+          "kind": "data"
+        },
+        {
+          "name": "timestamp",
+          "type": "core::integer::u64",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::treasury::Treasury::RevenueSplitSet",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "post_id",
+          "type": "core::integer::u64",
+          "kind": "key"
+        },
+        {
+          "name": "collaborator",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "data"
+        },
+        {
+          "name": "share_bps",
+          "type": "core::integer::u16",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::treasury::Treasury::ReferrerSet",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "user",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "key"
+        },
+        {
+          "name": "referrer",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "key"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::treasury::Treasury::ConfigUpdated",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "platform_fee_bps",
+          "type": "core::integer::u16",
+          "kind": "data"
+        },
+        {
+          "name": "referral_fee_bps",
+          "type": "core::integer::u16",
+          "kind": "data"
+        },
+        {
+          "name": "min_withdrawal",
+          "type": "core::integer::u256",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::treasury::Treasury::ContractAuthorized",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "contract_address",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "key"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::treasury::Treasury::ContractDeauthorized",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "contract_address",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "key"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::treasury::Treasury::PlatformWithdrawal",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "recipient",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "key"
+        },
+        {
+          "name": "amount",
+          "type": "core::integer::u256",
+          "kind": "data"
+        },
+        {
+          "name": "timestamp",
+          "type": "core::integer::u64",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::treasury::Treasury::Paused",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "timestamp",
+          "type": "core::integer::u64",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::treasury::Treasury::Unpaused",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "timestamp",
+          "type": "core::integer::u64",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::treasury::Treasury::OwnershipTransferred",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "previous_owner",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "key"
+        },
+        {
+          "name": "new_owner",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "key"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "vauban_blog::treasury::Treasury::Event",
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "PaymentDistributed",
+          "type": "vauban_blog::treasury::Treasury::PaymentDistributed",
+          "kind": "nested"
+        },
+        {
+          "name": "EarningsWithdrawn",
+          "type": "vauban_blog::treasury::Treasury::EarningsWithdrawn",
+          "kind": "nested"
+        },
+        {
+          "name": "RevenueSplitSet",
+          "type": "vauban_blog::treasury::Treasury::RevenueSplitSet",
+          "kind": "nested"
+        },
+        {
+          "name": "ReferrerSet",
+          "type": "vauban_blog::treasury::Treasury::ReferrerSet",
+          "kind": "nested"
+        },
+        {
+          "name": "ConfigUpdated",
+          "type": "vauban_blog::treasury::Treasury::ConfigUpdated",
+          "kind": "nested"
+        },
+        {
+          "name": "ContractAuthorized",
+          "type": "vauban_blog::treasury::Treasury::ContractAuthorized",
+          "kind": "nested"
+        },
+        {
+          "name": "ContractDeauthorized",
+          "type": "vauban_blog::treasury::Treasury::ContractDeauthorized",
+          "kind": "nested"
+        },
+        {
+          "name": "PlatformWithdrawal",
+          "type": "vauban_blog::treasury::Treasury::PlatformWithdrawal",
+          "kind": "nested"
+        },
+        {
+          "name": "Paused",
+          "type": "vauban_blog::treasury::Treasury::Paused",
+          "kind": "nested"
+        },
+        {
+          "name": "Unpaused",
+          "type": "vauban_blog::treasury::Treasury::Unpaused",
+          "kind": "nested"
+        },
+        {
+          "name": "OwnershipTransferred",
+          "type": "vauban_blog::treasury::Treasury::OwnershipTransferred",
+          "kind": "nested"
+        }
+      ]
+    }
+  ]
+}

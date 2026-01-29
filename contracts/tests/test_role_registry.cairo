@@ -2,6 +2,7 @@
 use snforge_std::{
     declare, ContractClassTrait, DeclareResultTrait,
     start_cheat_caller_address, stop_cheat_caller_address,
+    start_cheat_block_timestamp_global,
     spy_events, EventSpyAssertionsTrait,
 };
 use starknet::{ContractAddress, contract_address_const};
@@ -45,6 +46,8 @@ fn ZERO() -> ContractAddress {
 }
 
 fn deploy() -> IRoleRegistryDispatcher {
+    // Set non-zero timestamp so granted_at != 0 (needed for registration checks)
+    start_cheat_block_timestamp_global(1000);
     let contract = declare("RoleRegistry").unwrap().contract_class();
     let (address, _) = contract.deploy(@array![OWNER().into()]).unwrap();
     IRoleRegistryDispatcher { contract_address: address }
@@ -78,26 +81,26 @@ fn deploy_and_setup_roles() -> IRoleRegistryDispatcher {
 #[test]
 fn test_constructor_sets_owner() {
     let contract = deploy();
-    assert_eq!(contract.get_owner(), OWNER());
+    assert(contract.get_owner() == OWNER(), 'Owner mismatch');
 }
 
 #[test]
 fn test_constructor_grants_owner_role() {
     let contract = deploy();
-    assert_eq!(contract.get_role(OWNER()), ROLE_OWNER);
+    assert(contract.get_role(OWNER()) == ROLE_OWNER, 'Owner role mismatch');
 }
 
 #[test]
 fn test_constructor_initializes_stats() {
     let contract = deploy();
-    assert_eq!(contract.get_total_users(), 1);
-    assert_eq!(contract.get_users_by_role(ROLE_OWNER), 1);
+    assert(contract.get_total_users() == 1, 'Total users should be 1');
+    assert(contract.get_users_by_role(ROLE_OWNER) == 1, 'Owner count should be 1');
 }
 
 #[test]
 fn test_constructor_sets_default_threshold() {
     let contract = deploy();
-    assert_eq!(contract.get_contributor_threshold(), 5);
+    assert(contract.get_contributor_threshold() == 5, 'Threshold should be 5');
 }
 
 // ============================================================================
@@ -112,8 +115,8 @@ fn test_owner_can_grant_admin() {
     contract.grant_role(ADMIN(), ROLE_ADMIN);
     stop_cheat_caller_address(contract.contract_address);
 
-    assert_eq!(contract.get_role(ADMIN()), ROLE_ADMIN);
-    assert_eq!(contract.get_users_by_role(ROLE_ADMIN), 1);
+    assert(contract.get_role(ADMIN()) == ROLE_ADMIN, 'Admin role mismatch');
+    assert(contract.get_users_by_role(ROLE_ADMIN) == 1, 'Admin count mismatch');
 }
 
 #[test]
@@ -125,8 +128,8 @@ fn test_owner_can_grant_any_role() {
     contract.grant_role(USER2(), ROLE_MODERATOR);
     stop_cheat_caller_address(contract.contract_address);
 
-    assert_eq!(contract.get_role(USER1()), ROLE_EDITOR);
-    assert_eq!(contract.get_role(USER2()), ROLE_MODERATOR);
+    assert(contract.get_role(USER1()) == ROLE_EDITOR, 'User1 role mismatch');
+    assert(contract.get_role(USER2()) == ROLE_MODERATOR, 'User2 role mismatch');
 }
 
 #[test]
@@ -137,7 +140,7 @@ fn test_admin_can_grant_up_to_editor() {
     contract.grant_role(USER1(), ROLE_EDITOR);
     stop_cheat_caller_address(contract.contract_address);
 
-    assert_eq!(contract.get_role(USER1()), ROLE_EDITOR);
+    assert(contract.get_role(USER1()) == ROLE_EDITOR, 'Editor role mismatch');
 }
 
 #[test]
@@ -157,7 +160,7 @@ fn test_editor_can_grant_up_to_moderator() {
     contract.grant_role(USER1(), ROLE_MODERATOR);
     stop_cheat_caller_address(contract.contract_address);
 
-    assert_eq!(contract.get_role(USER1()), ROLE_MODERATOR);
+    assert(contract.get_role(USER1()) == ROLE_MODERATOR, 'Moderator role mismatch');
 }
 
 #[test]
@@ -208,9 +211,9 @@ fn test_user_can_register() {
     let result = contract.register_user();
     stop_cheat_caller_address(contract.contract_address);
 
-    assert!(result);
-    assert_eq!(contract.get_role(USER1()), ROLE_WRITER);
-    assert_eq!(contract.get_total_users(), 2);  // owner + user1
+    assert(result, 'Registration should succeed');
+    assert(contract.get_role(USER1()) == ROLE_WRITER, 'Should be WRITER');
+    assert(contract.get_total_users() == 2, 'Total users should be 2');
 }
 
 #[test]
@@ -222,7 +225,7 @@ fn test_already_registered_user_returns_false() {
     let result = contract.register_user();  // Second registration
     stop_cheat_caller_address(contract.contract_address);
 
-    assert!(!result);
+    assert(!result, 'Should return false');
 }
 
 // ============================================================================
@@ -238,7 +241,7 @@ fn test_owner_can_revoke_role() {
     stop_cheat_caller_address(contract.contract_address);
 
     // Revoked users become READER
-    assert_eq!(contract.get_role(ADMIN()), ROLE_READER);
+    assert(contract.get_role(ADMIN()) == ROLE_READER, 'Should be READER');
 }
 
 #[test]
@@ -249,7 +252,7 @@ fn test_admin_can_revoke_lower_roles() {
     contract.revoke_role(EDITOR());
     stop_cheat_caller_address(contract.contract_address);
 
-    assert_eq!(contract.get_role(EDITOR()), ROLE_READER);
+    assert(contract.get_role(EDITOR()) == ROLE_READER, 'Should be READER');
 }
 
 #[test]
@@ -290,8 +293,8 @@ fn test_user_can_request_role() {
     let request_id = contract.request_role(ROLE_MODERATOR);
     stop_cheat_caller_address(contract.contract_address);
 
-    assert_eq!(request_id, 1);
-    assert_eq!(contract.get_pending_request(USER1()), 1);
+    assert(request_id == 1, 'Request ID should be 1');
+    assert(contract.get_pending_request(USER1()) == 1, 'Pending request should be 1');
 }
 
 #[test]
@@ -353,8 +356,8 @@ fn test_editor_can_approve_request() {
     contract.approve_request(request_id);
     stop_cheat_caller_address(contract.contract_address);
 
-    assert_eq!(contract.get_role(USER1()), ROLE_CONTRIBUTOR);
-    assert_eq!(contract.get_pending_request(USER1()), 0);
+    assert(contract.get_role(USER1()) == ROLE_CONTRIBUTOR, 'Should be CONTRIBUTOR');
+    assert(contract.get_pending_request(USER1()) == 0, 'Pending should be 0');
 }
 
 #[test]
@@ -403,11 +406,11 @@ fn test_editor_can_reject_request() {
     stop_cheat_caller_address(contract.contract_address);
 
     // Role should remain WRITER
-    assert_eq!(contract.get_role(USER1()), ROLE_WRITER);
-    assert_eq!(contract.get_pending_request(USER1()), 0);
+    assert(contract.get_role(USER1()) == ROLE_WRITER, 'Should remain WRITER');
+    assert(contract.get_pending_request(USER1()) == 0, 'Pending should be 0');
 
     let request = contract.get_request(request_id);
-    assert!(request.is_rejected);
+    assert(request.is_rejected, 'Should be rejected');
 }
 
 // ============================================================================
@@ -423,7 +426,7 @@ fn test_auto_promotion_to_contributor() {
     contract.register_user();
     stop_cheat_caller_address(contract.contract_address);
 
-    assert_eq!(contract.get_role(USER1()), ROLE_WRITER);
+    assert(contract.get_role(USER1()) == ROLE_WRITER, 'Should be WRITER');
 
     // Increment approved posts (called by editor/admin)
     start_cheat_caller_address(contract.contract_address, EDITOR());
@@ -434,7 +437,7 @@ fn test_auto_promotion_to_contributor() {
     contract.increment_approved_posts(USER1());  // 5 -> auto-promote
     stop_cheat_caller_address(contract.contract_address);
 
-    assert_eq!(contract.get_role(USER1()), ROLE_CONTRIBUTOR);
+    assert(contract.get_role(USER1()) == ROLE_CONTRIBUTOR, 'Should be CONTRIBUTOR');
 }
 
 #[test]
@@ -455,7 +458,7 @@ fn test_no_auto_promotion_below_threshold() {
     stop_cheat_caller_address(contract.contract_address);
 
     // Should still be WRITER
-    assert_eq!(contract.get_role(USER1()), ROLE_WRITER);
+    assert(contract.get_role(USER1()) == ROLE_WRITER, 'Should still be WRITER');
 }
 
 // ============================================================================
@@ -477,7 +480,7 @@ fn test_add_reputation() {
     stop_cheat_caller_address(contract.contract_address);
 
     let user_role = contract.get_user_role(USER1());
-    assert_eq!(user_role.reputation, 100);
+    assert(user_role.reputation == 100, 'Reputation should be 100');
 }
 
 // ============================================================================
@@ -489,10 +492,10 @@ fn test_has_role() {
     let contract = deploy_and_setup_roles();
 
     // ADMIN has role >= EDITOR
-    assert!(contract.has_role(ADMIN(), ROLE_EDITOR));
-    assert!(contract.has_role(ADMIN(), ROLE_MODERATOR));
-    assert!(contract.has_role(ADMIN(), ROLE_ADMIN));
-    assert!(!contract.has_role(ADMIN(), ROLE_OWNER));
+    assert(contract.has_role(ADMIN(), ROLE_EDITOR), 'Admin has editor+');
+    assert(contract.has_role(ADMIN(), ROLE_MODERATOR), 'Admin has moderator+');
+    assert(contract.has_role(ADMIN(), ROLE_ADMIN), 'Admin has admin+');
+    assert(!contract.has_role(ADMIN(), ROLE_OWNER), 'Admin not owner');
 }
 
 #[test]
@@ -505,19 +508,19 @@ fn test_can_publish_immediately() {
     stop_cheat_caller_address(contract.contract_address);
 
     // Writer cannot publish immediately
-    assert!(!contract.can_publish_immediately(USER1()));
+    assert(!contract.can_publish_immediately(USER1()), 'Writer cannot publish');
 
     // Editor can
-    assert!(contract.can_publish_immediately(EDITOR()));
+    assert(contract.can_publish_immediately(EDITOR()), 'Editor can publish');
 }
 
 #[test]
 fn test_can_approve_content() {
     let contract = deploy_and_setup_roles();
 
-    assert!(!contract.can_approve_content(MODERATOR()));
-    assert!(contract.can_approve_content(EDITOR()));
-    assert!(contract.can_approve_content(ADMIN()));
+    assert(!contract.can_approve_content(MODERATOR()), 'Mod cannot approve');
+    assert(contract.can_approve_content(EDITOR()), 'Editor can approve');
+    assert(contract.can_approve_content(ADMIN()), 'Admin can approve');
 }
 
 #[test]
@@ -529,19 +532,19 @@ fn test_can_moderate() {
     contract.register_user();
     stop_cheat_caller_address(contract.contract_address);
 
-    assert!(!contract.can_moderate(USER1()));
-    assert!(contract.can_moderate(MODERATOR()));
-    assert!(contract.can_moderate(EDITOR()));
+    assert(!contract.can_moderate(USER1()), 'Writer cannot moderate');
+    assert(contract.can_moderate(MODERATOR()), 'Mod can moderate');
+    assert(contract.can_moderate(EDITOR()), 'Editor can moderate');
 }
 
 #[test]
 fn test_get_users_by_role_counts() {
     let contract = deploy_and_setup_roles();
 
-    assert_eq!(contract.get_users_by_role(ROLE_OWNER), 1);
-    assert_eq!(contract.get_users_by_role(ROLE_ADMIN), 1);
-    assert_eq!(contract.get_users_by_role(ROLE_EDITOR), 1);
-    assert_eq!(contract.get_users_by_role(ROLE_MODERATOR), 1);
+    assert(contract.get_users_by_role(ROLE_OWNER) == 1, 'Owner count');
+    assert(contract.get_users_by_role(ROLE_ADMIN) == 1, 'Admin count');
+    assert(contract.get_users_by_role(ROLE_EDITOR) == 1, 'Editor count');
+    assert(contract.get_users_by_role(ROLE_MODERATOR) == 1, 'Moderator count');
 }
 
 // ============================================================================
@@ -556,7 +559,7 @@ fn test_set_contributor_threshold() {
     contract.set_contributor_threshold(10);
     stop_cheat_caller_address(contract.contract_address);
 
-    assert_eq!(contract.get_contributor_threshold(), 10);
+    assert(contract.get_contributor_threshold() == 10, 'Threshold should be 10');
 }
 
 #[test]
@@ -589,7 +592,7 @@ fn test_admin_can_pause() {
     contract.pause();
     stop_cheat_caller_address(contract.contract_address);
 
-    assert!(contract.is_paused());
+    assert(contract.is_paused(), 'Should be paused');
 }
 
 #[test]
@@ -604,7 +607,7 @@ fn test_only_owner_can_unpause() {
     contract.unpause();
     stop_cheat_caller_address(contract.contract_address);
 
-    assert!(!contract.is_paused());
+    assert(!contract.is_paused(), 'Should not be paused');
 }
 
 #[test]
@@ -642,9 +645,9 @@ fn test_transfer_ownership() {
     contract.transfer_ownership(USER1());
     stop_cheat_caller_address(contract.contract_address);
 
-    assert_eq!(contract.get_owner(), USER1());
-    assert_eq!(contract.get_role(USER1()), ROLE_OWNER);
-    assert_eq!(contract.get_role(OWNER()), ROLE_ADMIN);  // Demoted to admin
+    assert(contract.get_owner() == USER1(), 'New owner mismatch');
+    assert(contract.get_role(USER1()) == ROLE_OWNER, 'New owner role');
+    assert(contract.get_role(OWNER()) == ROLE_ADMIN, 'Old owner demoted');
 }
 
 #[test]
@@ -674,13 +677,13 @@ fn test_unregistered_user_is_reader() {
     let contract = deploy();
 
     // Unregistered user should be treated as READER
-    assert_eq!(contract.get_role(USER1()), ROLE_READER);
+    assert(contract.get_role(USER1()) == ROLE_READER, 'Should be READER');
 }
 
 #[test]
 fn test_unregistered_user_has_reader_role() {
     let contract = deploy();
 
-    assert!(contract.has_role(USER1(), ROLE_READER));
-    assert!(!contract.has_role(USER1(), ROLE_WRITER));
+    assert(contract.has_role(USER1(), ROLE_READER), 'Has READER');
+    assert(!contract.has_role(USER1(), ROLE_WRITER), 'Not WRITER');
 }

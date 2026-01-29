@@ -819,7 +819,7 @@ mod Social {
 use starknet::ContractAddress;
 
 #[starknet::interface]
-trait ISocial<TContractState> {
+pub trait ISocial<TContractState> {
     // User functions
     fn add_comment(
         ref self: TContractState,
