@@ -5,7 +5,8 @@ namespace: vauban-blog
 
 resources:
   - 00-namespace.yaml
-  - 01-sealed-secrets.yaml
+  # 01-sealed-secrets.yaml excluded — secrets managed directly on cluster
+  # Generate with: bash k8s/scripts/generate-sealed-secrets.sh production
   - 02-configmaps.yaml
   - 03-pvc.yaml
   - 10-frontend-rollout.yaml   # Standard Deployment (Argo Rollouts not installed)
