@@ -1,4 +1,4 @@
-# ArgoCD Application for production with Argo Rollouts
+# ArgoCD Application for production
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -35,18 +35,6 @@ spec:
         duration: 5s
         factor: 2
         maxDuration: 2m
-
-  # Ignore Argo Rollouts managed fields
-  ignoreDifferences:
-    - group: argoproj.io
-      kind: Rollout
-      jsonPointers:
-        - /spec/replicas
-        - /status
-    - group: ""
-      kind: Service
-      jsonPointers:
-        - /spec/selector  # Argo Rollouts manages selectors
 
   # Production info
   info:
