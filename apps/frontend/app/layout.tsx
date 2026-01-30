@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import './globals.css';
 import { WalletProvider } from '@/providers/wallet-provider';
 import { ThemeProvider } from '@/providers/theme-provider';
@@ -66,11 +67,22 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Force dynamic rendering so process.env is read at request time
+  // (not at build time when Docker image has no env vars)
+  await headers();
+
+  // Collect all NEXT_PUBLIC_* env vars for client-side runtime access
+  const publicEnv = Object.fromEntries(
+    Object.entries(process.env)
+      .filter(([key]) => key.startsWith('NEXT_PUBLIC_'))
+      .filter(([, value]) => value !== undefined && value !== '')
+  );
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -81,13 +93,7 @@ export default function RootLayout({
             without them — this script makes them available at runtime. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `window.__ENV__=${JSON.stringify(
-              Object.fromEntries(
-                Object.entries(process.env)
-                  .filter(([key]) => key.startsWith('NEXT_PUBLIC_'))
-                  .filter(([, value]) => value !== undefined && value !== '')
-              )
-            )};`,
+            __html: `window.__ENV__=${JSON.stringify(publicEnv)};`,
           }}
         />
       </head>
