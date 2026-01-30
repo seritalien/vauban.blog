@@ -77,9 +77,16 @@ export default async function RootLayout({
   await headers();
 
   // Collect all NEXT_PUBLIC_* env vars for client-side runtime access
+  // Exclude internal-only URLs (cluster DNS) that the browser cannot reach
+  const INTERNAL_ONLY_KEYS = new Set([
+    'NEXT_PUBLIC_MADARA_RPC',       // Browser uses /api/rpc proxy instead
+    'NEXT_PUBLIC_IPFS_API_URL',     // Browser uses /api/ipfs proxy instead
+    'NEXT_PUBLIC_IPFS_GATEWAY_URL', // Browser uses /api/ipfs proxy instead
+  ]);
   const publicEnv = Object.fromEntries(
     Object.entries(process.env)
       .filter(([key]) => key.startsWith('NEXT_PUBLIC_'))
+      .filter(([key]) => !INTERNAL_ONLY_KEYS.has(key))
       .filter(([, value]) => value !== undefined && value !== '')
   );
 

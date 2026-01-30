@@ -8,8 +8,10 @@ data:
   NODE_ENV: "production"
   NEXT_PUBLIC_BASE_URL: "https://bastion.staging.vauban.tech"
 
-  # Blockchain — internal Pathfinder Sepolia RPC (port 9545)
+  # Blockchain
+  NEXT_PUBLIC_STARKNET_NETWORK: "sepolia"
   NEXT_PUBLIC_MADARA_RPC: "http://pathfinder-sepolia-rpc.starknet-node.svc:9545"
+  MADARA_RPC_URL: "http://pathfinder-sepolia-rpc.starknet-node.svc:9545"
 
   # IPFS (internal cluster service)
   NEXT_PUBLIC_IPFS_GATEWAY_URL: "http://ipfs:8080"
