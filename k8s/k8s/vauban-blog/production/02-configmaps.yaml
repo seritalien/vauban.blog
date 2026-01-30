@@ -8,24 +8,31 @@ metadata:
 data:
   # Application
   NODE_ENV: "production"
-  NEXT_PUBLIC_APP_URL: "https://bastion.vauban.tech"
+  NEXT_PUBLIC_BASE_URL: "https://bastion.vauban.tech"
 
-  # Blockchain
-  NEXT_PUBLIC_STARKNET_NETWORK: "mainnet"
-  NEXT_PUBLIC_RPC_URL: "https://rpc.vauban.tech"  # Production Madara
+  # Blockchain — internal Pathfinder Sepolia RPC (port 9545)
+  # Using Sepolia until mainnet contracts are deployed
+  NEXT_PUBLIC_MADARA_RPC: "http://pathfinder-sepolia-rpc.starknet-node.svc:9545"
 
   # IPFS (internal service)
+  NEXT_PUBLIC_IPFS_GATEWAY_URL: "http://ipfs:8080"
+  NEXT_PUBLIC_IPFS_API_URL: "http://ipfs:5001"
   IPFS_API_URL: "http://ipfs:5001"
-  IPFS_GATEWAY_URL: "https://ipfs.vauban.tech"
-  NEXT_PUBLIC_IPFS_GATEWAY: "https://ipfs.vauban.tech"
 
-  # Arweave
-  ARWEAVE_GATEWAY: "https://arweave.net"
+  # Contract addresses (same as staging — Sepolia deployment)
+  NEXT_PUBLIC_BLOG_REGISTRY_ADDRESS: "0x33633026db7a22b50849ebe112f39d710d967856cc5f9b7088069af48eee98b"
+  NEXT_PUBLIC_SOCIAL_ADDRESS: "0x67dc927e948662cd150a0d977ed1166a3287f30e9c737be0b5be484cc3aa8d"
+  NEXT_PUBLIC_ROLE_REGISTRY_ADDRESS: "0x3a864c75941e678c2a685a2efcd89bc68c7951546ccfdb44504b5f0a6f48ced"
+  NEXT_PUBLIC_REPUTATION_ADDRESS: "0xef558283180a5c0f3b8daf79edd5592136404d0a8af7a058615428d8da887e"
+  NEXT_PUBLIC_FOLLOWS_ADDRESS: "0x1c38dfe6f2a479abbfbe10c710249e7cbfaea0c68d260d0f69572f97a6b6d3e"
+  NEXT_PUBLIC_TREASURY_ADDRESS: "0x1944f5af48af7b9c64344da7bdcd28c6cc5ac7bef6be6c9a7b20de84a2e3ec5"
+  NEXT_PUBLIC_PAYMASTER_ADDRESS: ""
+  NEXT_PUBLIC_SESSION_KEY_MANAGER_ADDRESS: ""
 
   # Observability
-  OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo.monitoring:4318"
-  OTEL_SERVICE_NAME: "vauban-blog"
-  OTEL_ENVIRONMENT: "production"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo.observability.svc:4318"
+  OTEL_SERVICE_NAME: "vauban-blog-frontend"
+  OTEL_RESOURCE_ATTRIBUTES: "service.namespace=vauban-blog,deployment.environment=production"
 
   # Features
   ENABLE_ANALYTICS: "true"
