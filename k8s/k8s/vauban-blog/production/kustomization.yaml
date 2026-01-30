@@ -8,8 +8,8 @@ resources:
   - 01-sealed-secrets.yaml
   - 02-configmaps.yaml
   - 03-pvc.yaml
-  - 10-frontend-rollout.yaml   # Argo Rollout instead of Deployment
-  - 11-frontend-services.yaml  # Blue + Green + Active services
+  - 10-frontend-rollout.yaml   # Standard Deployment (Argo Rollouts not installed)
+  - 11-frontend-services.yaml
   - 12-ipfs-deployment.yaml
   - 13-redis-deployment.yaml
   - 20-ingress.yaml
@@ -21,7 +21,6 @@ resources:
   # Or via ArgoCD alerts application (k8s/argocd/alerts.yaml)
   - 50-network-policies.yaml
   - 60-pod-disruption-budgets.yaml
-  - 70-analysistemplate.yaml   # For automated rollback
 
 commonLabels:
   app: vauban-blog
