@@ -30,16 +30,20 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  curl -X POST \
-                    -H "Authorization: Bearer ${CRON_SECRET}" \
-                    -H "Content-Type: application/json" \
-                    --fail \
-                    --silent \
-                    --show-error \
-                    --max-time 60 \
-                    --retry 3 \
-                    --retry-delay 5 \
-                    "http://frontend-active:3000/api/cron/publish-scheduled"
+                  # Retry with backoff — kube-router needs time to populate
+                  # network policy ipsets for short-lived CronJob pods
+                  for i in 2 3 5 8 13; do
+                    curl \
+                      -H "Authorization: Bearer ${CRON_SECRET}" \
+                      --fail \
+                      --silent \
+                      --show-error \
+                      --max-time 60 \
+                      "http://frontend-active:3000/api/cron/publish-scheduled" && exit 0
+                    echo "Attempt failed, retrying in ${i}s..."
+                    sleep "$i"
+                  done
+                  exit 1
               env:
                 - name: CRON_SECRET
                   valueFrom:
