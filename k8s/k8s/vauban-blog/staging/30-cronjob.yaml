@@ -30,14 +30,20 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  curl -X POST \
-                    -H "Authorization: Bearer ${CRON_SECRET}" \
-                    -H "Content-Type: application/json" \
-                    --fail \
-                    --silent \
-                    --show-error \
-                    --max-time 60 \
-                    "http://frontend:3000/api/cron/publish-scheduled"
+                  # Retry with backoff — NetworkPolicy needs time to propagate to new pods
+                  for i in 1 2 3 4 5; do
+                    curl -X POST \
+                      -H "Authorization: Bearer ${CRON_SECRET}" \
+                      -H "Content-Type: application/json" \
+                      --fail \
+                      --silent \
+                      --show-error \
+                      --max-time 60 \
+                      "http://frontend:3000/api/cron/publish-scheduled" && exit 0
+                    echo "Attempt $i failed, retrying in ${i}s..."
+                    sleep "$i"
+                  done
+                  exit 1
               env:
                 - name: CRON_SECRET
                   valueFrom:
